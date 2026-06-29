@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>買い物リスト | 生活OS</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>🛒 買い物リスト</h1>
+    <button class="btn-icon" onclick="clearBought()" title="購入済みを削除">✅</button>
+  </header>
+
+  <main class="page-main">
+    <div id="listContainer"></div>
+
+    <!-- 手動追加フォーム（常に表示） -->
+    <div class="card mt-16" style="padding:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--text-sub);margin-bottom:10px">手動で追加</div>
+      <div class="form-row">
+        <input type="text" class="form-input" id="addName" placeholder="品名 ＊">
+        <input type="text" class="form-input" id="addQty" placeholder="数量（例：2本）">
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <input type="text" class="form-input" id="addCat" placeholder="カテゴリ（任意）">
+        <button class="btn btn-primary" onclick="addManual()">追加</button>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const KEY = 'life_shopping';
+    const INV_KEY = 'life_inventory';
+
+    function addManual() {
+      const name = document.getElementById('addName').value.trim();
+      if (!name) { alert('品名を入力してください'); return; }
+      Storage.add(KEY, {
+        name,
+        quantity: document.getElementById('addQty').value.trim(),
+        category: document.getElementById('addCat').value.trim(),
+        source: 'manual',
+        inventoryId: null,
+        bought: false,
+        notes: ''
+      });
+      document.getElementById('addName').value = '';
+      document.getElementById('addQty').value  = '';
+      document.getElementById('addCat').value  = '';
+      showToast('追加しました ✓');
+      render();
+    }
+
+    function toggleBought(id) {
+      const item = Storage.get(KEY).find(i => i.id === id);
+      if (!item) return;
+      const newBought = !item.bought;
+      Storage.update(KEY, id, { bought: newBought });
+
+      // 在庫から来た項目：購入済みにしたら在庫数を +1 する
+      if (newBought && item.inventoryId) {
+        const invItem = Storage.get(INV_KEY).find(i => i.id === item.inventoryId);
+        if (invItem) {
+          Storage.update(INV_KEY, item.inventoryId, { currentCount: (invItem.currentCount || 0) + 1 });
+          showToast('購入済み ✓ （在庫数を+1しました）');
+        } else {
+          showToast('購入済み ✓');
+        }
+      } else {
+        showToast(newBought ? '購入済み ✓' : '未購入に戻しました');
+      }
+      render();
+    }
+
+    function deleteItem(id) {
+      if (!confirmDelete('この項目を削除しますか？')) return;
+      Storage.remove(KEY, id);
+      showToast('削除しました');
+      render();
+    }
+
+    function clearBought() {
+      const items = Storage.get(KEY);
+      const bought = items.filter(i => i.bought);
+      if (bought.length === 0) { showToast('購入済みの項目はありません'); return; }
+      if (!confirm(`購入済みの ${bought.length} 件を削除しますか？`)) return;
+      bought.forEach(i => Storage.remove(KEY, i.id));
+      showToast(`${bought.length}件を削除しました`);
+      render();
+    }
+
+    function render() {
+      const items = Storage.get(KEY);
+      const pending = items.filter(i => !i.bought);
+      const bought  = items.filter(i => i.bought);
+
+      const container = document.getElementById('listContainer');
+
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🛒</div>
+            <div class="empty-state-text">買い物リストが空です</div>
+            <div class="empty-state-sub">下のフォームか、在庫管理から追加できます</div>
+          </div>`;
+        return;
+      }
+
+      function renderGroup(list, title, emptyMsg) {
+        if (list.length === 0) return `<div class="section-title">${title}</div><div class="card"><div style="padding:14px 16px;color:var(--text-muted);font-size:13px">${emptyMsg}</div></div>`;
+
+        // カテゴリでグループ化
+        const grouped = {};
+        list.forEach(item => {
+          const cat = item.category || '未分類';
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(item);
+        });
+
+        let html = `<div class="section-title">${title} <span style="color:var(--text-muted);font-weight:400">${list.length}件</span></div><div class="card">`;
+        Object.keys(grouped).sort().forEach(cat => {
+          if (Object.keys(grouped).length > 1) {
+            html += `<div style="padding:8px 16px 0;font-size:11px;font-weight:700;color:var(--text-muted)">${esc(cat)}</div>`;
+          }
+          grouped[cat].forEach(item => {
+            const fromInv = item.source === 'inventory';
+            html += `
+              <div class="list-item" style="${item.bought ? 'background:var(--success-light)' : ''}">
+                <button onclick="toggleBought('${item.id}')" style="
+                  width:26px;height:26px;border-radius:50%;flex-shrink:0;margin-top:2px;
+                  border:2px solid ${item.bought ? 'var(--success)' : 'var(--border)'};
+                  background:${item.bought ? 'var(--success)' : 'transparent'};
+                  color:white;cursor:pointer;font-size:15px;
+                  display:flex;align-items:center;justify-content:center;">
+                  ${item.bought ? '✓' : ''}
+                </button>
+                <div class="list-item-body">
+                  <span class="list-item-title" style="${item.bought ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${esc(item.name)}</span>
+                  <div class="list-item-sub">
+                    ${item.quantity ? esc(item.quantity) : ''}
+                    ${fromInv ? ' <span class="tag">在庫連携</span>' : ''}
+                  </div>
+                </div>
+                <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+              </div>`;
+          });
+        });
+        html += '</div>';
+        return html;
+      }
+
+      container.innerHTML =
+        renderGroup(pending, '🔲 未購入', 'すべて購入済みです') +
+        (bought.length > 0 ? renderGroup(bought, '✅ 購入済み', '') : '');
+    }
+
+    // Enterキーで追加
+    document.getElementById('addName').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('addQty').focus();
+    });
+    document.getElementById('addQty').addEventListener('keydown', e => {
+      if (e.key === 'Enter') addManual();
+    });
+
+    render();
+  </script>
+</body>
+</html>

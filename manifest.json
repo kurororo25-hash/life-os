@@ -1,0 +1,17 @@
+{
+  "name": "生活OS",
+  "short_name": "生活OS",
+  "description": "リマインダー・在庫・買い物・メモ・日記をまとめた生活管理アプリ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#4a7dff",
+  "theme_color": "#4a7dff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

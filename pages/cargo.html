@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>車内荷物 | 生活OS</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>🚐 車内荷物管理</h1>
+  </header>
+
+  <main class="page-main">
+    <div style="background:var(--primary-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--primary);margin-bottom:12px">
+      🚐 スズキ エブリィ（車高 1.8m ／ 荷室長 190cm）
+    </div>
+    <div class="search-bar">
+      <span>🔍</span>
+      <input type="text" id="searchInput" placeholder="品名・場所で検索" oninput="render()">
+    </div>
+    <div id="listContainer"></div>
+  </main>
+
+  <button class="fab" onclick="openModal()">＋</button>
+
+  <div class="modal-overlay hidden" id="modalOverlay" onclick="overlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="modalTitle">荷物を追加</span>
+        <button class="btn-icon" onclick="closeModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">品名 ＊</label>
+        <input type="text" class="form-input" id="fName" placeholder="例：A4クリアファイル（書類）">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">カテゴリ</label>
+          <select class="form-select" id="fCategory">
+            <option value="書類">書類</option>
+            <option value="工具">工具</option>
+            <option value="日用品">日用品</option>
+            <option value="仕事道具">仕事道具</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">数量</label>
+          <input type="number" class="form-input" id="fQty" value="1" min="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">置き場所</label>
+        <select class="form-select" id="fLocation">
+          <option value="助手席足元">助手席足元</option>
+          <option value="助手席下">助手席下</option>
+          <option value="シートバックポケット">シートバックポケット</option>
+          <option value="荷室">荷室</option>
+          <option value="グローブボックス">グローブボックス</option>
+          <option value="センターコンソール">センターコンソール</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">常時積み</label>
+        <select class="form-select" id="fAlways">
+          <option value="yes">常時積んでいる</option>
+          <option value="no">必要時のみ</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">メモ</label>
+        <textarea class="form-textarea" id="fNotes" placeholder="サイズ・注意点など（任意）"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveItem()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const KEY = 'life_cargo';
+    let editingId = null;
+
+    function openModal(id) {
+      editingId = id || null;
+      document.getElementById('modalTitle').textContent = id ? '荷物を編集' : '荷物を追加';
+      document.getElementById('modalOverlay').classList.remove('hidden');
+
+      if (id) {
+        const item = Storage.get(KEY).find(i => i.id === id);
+        if (item) {
+          document.getElementById('fName').value     = item.name     || '';
+          document.getElementById('fCategory').value = item.category || '書類';
+          document.getElementById('fQty').value      = item.qty      || 1;
+          document.getElementById('fLocation').value = item.location || '助手席足元';
+          document.getElementById('fAlways').value   = item.always   || 'yes';
+          document.getElementById('fNotes').value    = item.notes    || '';
+        }
+      } else {
+        document.getElementById('fName').value  = '';
+        document.getElementById('fQty').value   = 1;
+        document.getElementById('fNotes').value = '';
+        document.getElementById('fCategory').value = '書類';
+        document.getElementById('fLocation').value = '助手席足元';
+        document.getElementById('fAlways').value   = 'yes';
+      }
+      setTimeout(() => document.getElementById('fName').focus(), 120);
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.add('hidden');
+      editingId = null;
+    }
+
+    function overlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    function saveItem() {
+      const name = document.getElementById('fName').value.trim();
+      if (!name) { alert('品名を入力してください'); return; }
+      const data = {
+        name,
+        category: document.getElementById('fCategory').value,
+        qty:      parseInt(document.getElementById('fQty').value) || 1,
+        location: document.getElementById('fLocation').value,
+        always:   document.getElementById('fAlways').value,
+        notes:    document.getElementById('fNotes').value.trim()
+      };
+      if (editingId) {
+        Storage.update(KEY, editingId, data);
+        showToast('更新しました ✓');
+      } else {
+        Storage.add(KEY, data);
+        showToast('追加しました ✓');
+      }
+      closeModal();
+      render();
+    }
+
+    function deleteItem(id) {
+      if (!confirmDelete('この項目を削除しますか？')) return;
+      Storage.remove(KEY, id);
+      showToast('削除しました');
+      render();
+    }
+
+    function render() {
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      let items = Storage.get(KEY);
+      if (query) {
+        items = items.filter(i =>
+          i.name.toLowerCase().includes(query) ||
+          (i.location || '').toLowerCase().includes(query) ||
+          (i.category || '').toLowerCase().includes(query)
+        );
+      }
+
+      const container = document.getElementById('listContainer');
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🚐</div>
+            <div class="empty-state-text">${query ? '見つかりません' : '登録された荷物がありません'}</div>
+            <div class="empty-state-sub">＋ ボタンで追加できます</div>
+          </div>`;
+        return;
+      }
+
+      // 場所でグループ化
+      const grouped = {};
+      items.forEach(item => {
+        const loc = item.location || 'その他';
+        if (!grouped[loc]) grouped[loc] = [];
+        grouped[loc].push(item);
+      });
+
+      const locOrder = ['助手席足元','助手席下','シートバックポケット','グローブボックス','センターコンソール','荷室','その他'];
+      const sortedLocs = [...new Set([...locOrder, ...Object.keys(grouped)])].filter(l => grouped[l]);
+
+      let html = '';
+      sortedLocs.forEach(loc => {
+        if (!grouped[loc]) return;
+        html += `<div class="section-title">📍 ${esc(loc)}</div><div class="card">`;
+        grouped[loc].forEach(item => {
+          html += `
+            <div class="list-item">
+              <div class="list-item-body">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span class="list-item-title">${esc(item.name)}</span>
+                  ${item.always === 'no' ? '<span class="badge badge-info">必要時のみ</span>' : ''}
+                </div>
+                <div class="list-item-sub">
+                  ${esc(item.category)} ／ ${item.qty}個
+                  ${item.notes ? ` ／ ${esc(item.notes)}` : ''}
+                </div>
+              </div>
+              <div class="list-item-actions">
+                <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+                <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+              </div>
+            </div>`;
+        });
+        html += '</div>';
+      });
+
+      container.innerHTML = html;
+    }
+
+    render();
+  </script>
+</body>
+</html>

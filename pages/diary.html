@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>日記・ログ | 生活OS</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>📓 日記・ログ</h1>
+  </header>
+
+  <main class="page-main">
+    <div id="listContainer"></div>
+  </main>
+
+  <button class="fab" onclick="openModal()">＋</button>
+
+  <div class="modal-overlay hidden" id="modalOverlay" onclick="overlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="modalTitle">日記を追加</span>
+        <button class="btn-icon" onclick="closeModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">日付</label>
+        <input type="date" class="form-input" id="fDate">
+      </div>
+      <div class="form-group">
+        <label class="form-label">気分</label>
+        <div class="mood-selector" id="moodSelector">
+          <button class="mood-btn" data-mood="great" onclick="selectMood('great')" title="最高">😄</button>
+          <button class="mood-btn" data-mood="good"  onclick="selectMood('good')"  title="よかった">🙂</button>
+          <button class="mood-btn" data-mood="neutral" onclick="selectMood('neutral')" title="ふつう">😐</button>
+          <button class="mood-btn" data-mood="bad"  onclick="selectMood('bad')"   title="つらい">😔</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">内容</label>
+        <textarea class="form-textarea" id="fContent" style="min-height:160px" placeholder="今日のできごと、気づき、振り返りなど"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveItem()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="detailOverlay" onclick="closeDetail(event)">
+    <div class="modal" id="detailModal"></div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const KEY = 'life_diary';
+    let editingId  = null;
+    let selectedMood = 'good';
+
+    const MOODS = {
+      great:   { emoji: '😄', label: '最高' },
+      good:    { emoji: '🙂', label: 'よかった' },
+      neutral: { emoji: '😐', label: 'ふつう' },
+      bad:     { emoji: '😔', label: 'つらい' }
+    };
+
+    function selectMood(mood) {
+      selectedMood = mood;
+      document.querySelectorAll('.mood-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.mood === mood);
+      });
+    }
+
+    function openModal(id) {
+      editingId = id || null;
+      document.getElementById('modalTitle').textContent = id ? '日記を編集' : '今日の日記';
+      document.getElementById('modalOverlay').classList.remove('hidden');
+
+      if (id) {
+        const item = Storage.get(KEY).find(i => i.id === id);
+        if (item) {
+          document.getElementById('fDate').value    = item.date    || today();
+          document.getElementById('fContent').value = item.content || '';
+          selectMood(item.mood || 'good');
+        }
+      } else {
+        document.getElementById('fDate').value    = today();
+        document.getElementById('fContent').value = '';
+        selectMood('good');
+      }
+      setTimeout(() => document.getElementById('fContent').focus(), 120);
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.add('hidden');
+      editingId = null;
+    }
+
+    function overlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    function saveItem() {
+      const content = document.getElementById('fContent').value.trim();
+      if (!content) { alert('内容を入力してください'); return; }
+      const date = document.getElementById('fDate').value || today();
+      const data = { date, mood: selectedMood, content };
+
+      if (editingId) {
+        Storage.update(KEY, editingId, data);
+        showToast('更新しました ✓');
+      } else {
+        Storage.add(KEY, data);
+        showToast('記録しました ✓');
+      }
+      closeModal();
+      render();
+    }
+
+    function deleteItem(id) {
+      if (!confirmDelete('この日記を削除しますか？')) return;
+      Storage.remove(KEY, id);
+      showToast('削除しました');
+      document.getElementById('detailOverlay').classList.add('hidden');
+      render();
+    }
+
+    function showDetail(id) {
+      const item = Storage.get(KEY).find(i => i.id === id);
+      if (!item) return;
+      const mood = MOODS[item.mood] || MOODS.good;
+      const contentHtml = esc(item.content || '').replace(/\n/g, '<br>');
+      document.getElementById('detailModal').innerHTML = `
+        <div class="modal-title">
+          <span>${formatDate(item.date)}</span>
+          <button class="btn-icon" onclick="closeDetail()">✕</button>
+        </div>
+        <div style="font-size:28px;margin-bottom:8px">${mood.emoji} <span style="font-size:15px;color:var(--text-sub)">${mood.label}</span></div>
+        <div style="line-height:1.8;white-space:pre-wrap;word-break:break-word;margin-bottom:16px">${contentHtml}</div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="closeDetail();openModal('${item.id}')">✏️ 編集</button>
+          <button class="btn btn-danger" onclick="deleteItem('${item.id}')">🗑️ 削除</button>
+        </div>`;
+      document.getElementById('detailOverlay').classList.remove('hidden');
+    }
+
+    function closeDetail(e) {
+      if (!e || e.target === document.getElementById('detailOverlay')) {
+        document.getElementById('detailOverlay').classList.add('hidden');
+      }
+    }
+
+    function render() {
+      const items = Storage.get(KEY);
+      // 日付降順
+      items.sort((a, b) => (b.date || '') > (a.date || '') ? 1 : -1);
+
+      const container = document.getElementById('listContainer');
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📓</div>
+            <div class="empty-state-text">日記がまだありません</div>
+            <div class="empty-state-sub">＋ ボタンで今日の日記を書きましょう</div>
+          </div>`;
+        return;
+      }
+
+      // 年月でグループ化
+      const grouped = {};
+      items.forEach(item => {
+        const ym = (item.date || '').slice(0, 7);
+        if (!grouped[ym]) grouped[ym] = [];
+        grouped[ym].push(item);
+      });
+
+      let html = '';
+      Object.keys(grouped).sort().reverse().forEach(ym => {
+        const [y, m] = ym.split('-');
+        html += `<div class="section-title">${y}年${parseInt(m)}月</div><div class="card">`;
+        grouped[ym].forEach(item => {
+          const mood  = MOODS[item.mood] || MOODS.good;
+          const preview = (item.content || '').slice(0, 50).replace(/\n/g, ' ');
+          html += `
+            <div class="list-item" onclick="showDetail('${item.id}')" style="cursor:pointer">
+              <div style="font-size:24px;flex-shrink:0">${mood.emoji}</div>
+              <div class="list-item-body">
+                <div class="list-item-title">${formatDate(item.date)}</div>
+                ${preview ? `<div class="list-item-sub">${esc(preview)}${item.content && item.content.length > 50 ? '…' : ''}</div>` : ''}
+              </div>
+              <button class="btn-icon" onclick="event.stopPropagation();openModal('${item.id}')">✏️</button>
+            </div>`;
+        });
+        html += '</div>';
+      });
+
+      container.innerHTML = html;
+    }
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>リマインダー | 生活OS</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>⏰ リマインダー</h1>
+    <button class="btn-icon" onclick="toggleGCalPanel()" title="Googleカレンダー" style="font-size:20px;color:var(--text-sub)">📅</button>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-upcoming" onclick="switchTab('upcoming')">未完了</button>
+    <button class="tab-btn" id="tab-today"    onclick="switchTab('today')">今日</button>
+    <button class="tab-btn" id="tab-done"     onclick="switchTab('done')">完了済み</button>
+  </div>
+
+  <!-- Google Calendar パネル -->
+  <div id="gcalPanel" class="hidden" style="background:var(--card);border-bottom:1px solid var(--border)">
+    <div style="padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:700">📅 Googleカレンダー</span>
+        <span id="gcalStatus" style="font-size:12px"></span>
+        <div style="flex:1;min-width:4px"></div>
+        <button id="gcalSignInBtn" class="btn btn-sm btn-primary" onclick="GCal.signIn()">Googleでログイン</button>
+        <button id="gcalSignOutBtn" class="btn btn-sm btn-ghost hidden" onclick="GCal.signOut()">ログアウト</button>
+      </div>
+      <div id="gcalSyncRow" style="margin-top:8px;display:none;gap:8px">
+        <button class="btn btn-sm btn-ghost" onclick="syncAllToGCal()" style="font-size:12px">📤 未完了を全て同期</button>
+        <button class="btn btn-sm btn-ghost" onclick="GCal.renderGCalEvents()" style="font-size:12px">🔄 更新</button>
+      </div>
+    </div>
+    <div style="padding:0 16px 12px">
+      <div class="section-title" style="margin-top:0">今後30日のイベント</div>
+      <div id="gcalEventsPanel" style="max-height:280px;overflow-y:auto">
+        <div style="text-align:center;padding:12px;color:var(--text-muted);font-size:13px">ログインするとカレンダーが表示されます</div>
+      </div>
+    </div>
+  </div>
+
+  <main class="page-main">
+    <div id="listContainer"></div>
+  </main>
+
+  <button class="fab" onclick="openModal()">＋</button>
+
+  <!-- 追加・編集モーダル -->
+  <div class="modal-overlay hidden" id="modalOverlay" onclick="overlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="modalTitle">リマインダーを追加</span>
+        <button class="btn-icon" onclick="closeModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">タイトル ＊</label>
+        <input type="text" class="form-input" id="fTitle" placeholder="例：薬を飲む">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">日付</label>
+          <input type="date" class="form-input" id="fDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">優先度</label>
+          <select class="form-select" id="fPriority">
+            <option value="medium">中</option>
+            <option value="high">高</option>
+            <option value="low">低</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">繰り返し</label>
+        <select class="form-select" id="fRepeat">
+          <option value="none">なし</option>
+          <option value="daily">毎日</option>
+          <option value="weekly">毎週（同じ曜日）</option>
+          <option value="weekly-sun">毎週日曜日</option>
+          <option value="weekly-mon">毎週月曜日</option>
+          <option value="weekly-tue">毎週火曜日</option>
+          <option value="weekly-wed">毎週水曜日</option>
+          <option value="weekly-thu">毎週木曜日</option>
+          <option value="weekly-fri">毎週金曜日</option>
+          <option value="weekly-sat">毎週土曜日</option>
+          <option value="monthly">毎月（同じ日）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">メモ</label>
+        <textarea class="form-textarea" id="fNotes" placeholder="補足メモ（任意）"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveItem()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google Calendar 設定モーダル -->
+  <div class="modal-overlay hidden" id="gcalSetupOverlay" onclick="gcalSetupOverlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span>📅 Googleカレンダー連動の設定</span>
+        <button class="btn-icon" onclick="GCal.closeSetup()">✕</button>
+      </div>
+
+      <div style="background:var(--warning-light);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px;font-size:13px;line-height:1.7;color:#92400e">
+        <strong>⚠️ 事前準備が必要です</strong><br>
+        このアプリを <strong>HTTPS環境</strong>（GitHub Pages等）または
+        <strong>localhost</strong> で開く必要があります。<br>
+        file:// では OAuth が動作しません。
+      </div>
+
+      <div style="font-size:13px;color:var(--text-sub);margin-bottom:16px;line-height:1.9">
+        <strong>設定手順：</strong><br>
+        1. <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" style="color:var(--primary)">Google Cloud Console</a> を開く<br>
+        2. プロジェクトを作成（または選択）<br>
+        3. 「APIとサービス」→「ライブラリ」→「Google Calendar API」を有効化<br>
+        4. 「認証情報」→「認証情報を作成」→「OAuthクライアントID」<br>
+        5. アプリの種類：「ウェブアプリケーション」を選択<br>
+        6. 承認済みのJavaScriptオリジンにこのアプリのURLを追加<br>
+        7. 作成されたクライアントIDを下に貼り付けて保存
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">クライアントID</label>
+        <input type="text" class="form-input" id="gcalClientIdInput"
+               placeholder="xxxxxxxx.apps.googleusercontent.com">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="GCal.closeSetup()">キャンセル</button>
+        <button class="btn btn-primary" onclick="GCal.saveClientId()">保存して再読み込み</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script src="../js/google-calendar.js"></script>
+  <script async defer src="https://apis.google.com/js/api.js"
+          onload="GCal.gapiLoaded()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client"
+          onload="GCal.gisLoaded()"></script>
+  <script>
+    const KEY = 'life_reminders';
+    let currentTab = 'upcoming';
+    let editingId = null;
+    let gcalPanelOpen = false;
+
+    function toggleGCalPanel() {
+      gcalPanelOpen = !gcalPanelOpen;
+      document.getElementById('gcalPanel').classList.toggle('hidden', !gcalPanelOpen);
+      if (gcalPanelOpen && GCal.isSignedIn()) GCal.renderGCalEvents();
+    }
+
+    function gcalSetupOverlayClick(e) {
+      if (e.target === document.getElementById('gcalSetupOverlay')) GCal.closeSetup();
+    }
+
+    async function syncAllToGCal() {
+      const items = Storage.get(KEY).filter(r => !r.done && r.date);
+      if (items.length === 0) { showToast('同期対象のリマインダーがありません'); return; }
+      showToast('同期中...');
+      await GCal.syncAll(items);
+    }
+
+    function openModal(id) {
+      editingId = id || null;
+      document.getElementById('modalTitle').textContent = id ? 'リマインダーを編集' : 'リマインダーを追加';
+      document.getElementById('modalOverlay').classList.remove('hidden');
+
+      if (id) {
+        const item = Storage.get(KEY).find(i => i.id === id);
+        if (item) {
+          document.getElementById('fTitle').value    = item.title    || '';
+          document.getElementById('fDate').value     = item.date     || '';
+          document.getElementById('fPriority').value = item.priority || 'medium';
+          document.getElementById('fRepeat').value   = item.repeat   || 'none';
+          document.getElementById('fNotes').value    = item.notes    || '';
+        }
+      } else {
+        document.getElementById('fTitle').value    = '';
+        document.getElementById('fDate').value     = today();
+        document.getElementById('fPriority').value = 'medium';
+        document.getElementById('fRepeat').value   = 'none';
+        document.getElementById('fNotes').value    = '';
+      }
+      setTimeout(() => document.getElementById('fTitle').focus(), 120);
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.add('hidden');
+      editingId = null;
+    }
+
+    function overlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    async function saveItem() {
+      const title = document.getElementById('fTitle').value.trim();
+      if (!title) { alert('タイトルを入力してください'); return; }
+
+      const data = {
+        title,
+        date:     document.getElementById('fDate').value,
+        priority: document.getElementById('fPriority').value,
+        repeat:   document.getElementById('fRepeat').value,
+        notes:    document.getElementById('fNotes').value.trim(),
+        done:     false
+      };
+
+      let saved;
+      if (editingId) {
+        saved = Storage.update(KEY, editingId, data);
+        showToast('更新しました ✓');
+      } else {
+        saved = Storage.add(KEY, data);
+        showToast('追加しました ✓');
+      }
+      closeModal();
+      render();
+
+      // Google連動中かつ日付ありなら自動同期
+      if (GCal.isSignedIn() && saved && saved.date) {
+        GCal.syncReminder(saved);
+      }
+    }
+
+    function toggleDone(id) {
+      const item = Storage.get(KEY).find(i => i.id === id);
+      if (!item) return;
+
+      if (!item.done && item.repeat && item.repeat !== 'none') {
+        const next = getNextDate(item.date, item.repeat);
+        Storage.update(KEY, id, { date: next });
+        showToast(`次回: ${formatDate(next)}`);
+      } else {
+        Storage.update(KEY, id, { done: !item.done });
+        showToast(item.done ? '未完了に戻しました' : '完了しました ✓');
+      }
+      render();
+    }
+
+    function getNextDate(dateStr, repeat) {
+      const d = new Date((dateStr || today()) + 'T00:00:00');
+      if (repeat === 'daily') {
+        d.setDate(d.getDate() + 1);
+      } else if (repeat === 'weekly') {
+        d.setDate(d.getDate() + 7);
+      } else if (repeat === 'monthly') {
+        d.setMonth(d.getMonth() + 1);
+      } else if (repeat && repeat.startsWith('weekly-')) {
+        const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+        const targetDay = dayMap[repeat.slice(7)];
+        if (targetDay !== undefined) {
+          d.setDate(d.getDate() + 1);
+          while (d.getDay() !== targetDay) d.setDate(d.getDate() + 1);
+        }
+      }
+      return d.toISOString().slice(0, 10);
+    }
+
+    function deleteItem(id) {
+      if (!confirmDelete('このリマインダーを削除しますか？')) return;
+      Storage.remove(KEY, id);
+      showToast('削除しました');
+      render();
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      ['upcoming','today','done'].forEach(t => {
+        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+      });
+      render();
+    }
+
+    function render() {
+      const todayStr = today();
+      let items = Storage.get(KEY);
+
+      if (currentTab === 'today') {
+        items = items.filter(i => !i.done && i.date === todayStr);
+      } else if (currentTab === 'done') {
+        items = items.filter(i => i.done);
+      } else {
+        items = items.filter(i => !i.done);
+      }
+
+      items.sort((a, b) => {
+        if (currentTab === 'done') {
+          return (b.updatedAt || b.createdAt) > (a.updatedAt || a.createdAt) ? 1 : -1;
+        }
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date < b.date ? -1 : 1;
+      });
+
+      const container = document.getElementById('listContainer');
+
+      if (items.length === 0) {
+        const msg = currentTab === 'done' ? '完了済みはありません' :
+                    currentTab === 'today' ? '今日のリマインダーはありません' :
+                    'リマインダーがありません';
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">⏰</div>
+            <div class="empty-state-text">${msg}</div>
+            <div class="empty-state-sub">＋ ボタンで追加できます</div>
+          </div>`;
+        return;
+      }
+
+      const html = items.map(item => {
+        const isOverdue = !item.done && item.date && item.date < todayStr;
+        const isToday   = item.date === todayStr;
+
+        let datePart = '';
+        if (item.date) {
+          if (isOverdue) {
+            datePart = `<span class="badge badge-danger">期限切れ ${formatDate(item.date)}</span>`;
+          } else if (isToday) {
+            datePart = `<span class="badge badge-warning">今日</span>`;
+          } else {
+            datePart = `<span style="font-size:12px;color:var(--text-muted)">${formatDate(item.date)}</span>`;
+          }
+        }
+
+        const repeatPart = (item.repeat && item.repeat !== 'none')
+          ? `<span class="tag">${repeatLabel(item.repeat)}</span>` : '';
+
+        const gcalPart = item.gcalEventId
+          ? `<span class="tag" style="background:#e8f0fe;color:#4285f4;font-size:10px;padding:2px 7px">G</span>`
+          : '';
+
+        return `
+          <div class="list-item" style="background:${isOverdue ? 'var(--danger-light)' : ''}">
+            <button onclick="toggleDone('${item.id}')" style="
+              width:26px;height:26px;border-radius:50%;flex-shrink:0;margin-top:2px;
+              border:2px solid ${item.done ? 'var(--success)' : 'var(--border)'};
+              background:${item.done ? 'var(--success)' : 'transparent'};
+              color:white;cursor:pointer;font-size:15px;
+              display:flex;align-items:center;justify-content:center;">
+              ${item.done ? '✓' : ''}
+            </button>
+            <div class="list-item-body">
+              <div class="list-item-title" style="${item.done ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${esc(item.title)}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:5px">
+                ${priorityBadge(item.priority)}
+                ${datePart}
+                ${repeatPart}
+                ${gcalPart}
+              </div>
+              ${item.notes ? `<div style="font-size:12px;color:var(--text-sub);margin-top:4px">${esc(item.notes)}</div>` : ''}
+            </div>
+            <div class="list-item-actions">
+              <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+              <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      container.innerHTML = `<div class="card">${html}</div>`;
+    }
+
+    render();
+  </script>
+</body>
+</html>

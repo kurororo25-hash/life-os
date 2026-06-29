@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>健康メモ | 生活OS</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>❤️ 健康メモ</h1>
+  </header>
+  <div id="app"></div>
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script src="../js/memo-base.js"></script>
+  <script>
+    initMemo({
+      key:   'life_memo_health',
+      icon:  '❤️',
+      label: '健康メモ',
+      placeholder: 'タイトル例：採血結果、薬のメモ、病院メモ'
+    });
+  </script>
+</body>
+</html>

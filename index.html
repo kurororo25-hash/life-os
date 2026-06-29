@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>生活OS</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="生活OS">
+  <style>
+    body { background: var(--bg); }
+  </style>
+</head>
+<body>
+  <header class="home-header">
+    <h1>🏠 生活OS</h1>
+    <p class="home-date" id="homeDate"></p>
+  </header>
+
+  <main class="home-grid">
+    <a href="pages/reminder.html" class="feature-card">
+      <span class="card-icon">⏰</span>
+      <span class="card-label">リマインダー</span>
+      <span class="card-badge" id="badgeReminder"></span>
+    </a>
+    <a href="pages/inventory.html" class="feature-card">
+      <span class="card-icon">📦</span>
+      <span class="card-label">在庫管理</span>
+      <span class="card-badge" id="badgeInventory"></span>
+    </a>
+    <a href="pages/shopping.html" class="feature-card">
+      <span class="card-icon">🛒</span>
+      <span class="card-label">買い物リスト</span>
+      <span class="card-badge" id="badgeShopping"></span>
+    </a>
+    <a href="pages/cargo.html" class="feature-card">
+      <span class="card-icon">🚐</span>
+      <span class="card-label">車内荷物</span>
+    </a>
+    <a href="pages/memo-work.html" class="feature-card">
+      <span class="card-icon">💼</span>
+      <span class="card-label">仕事メモ</span>
+    </a>
+    <a href="pages/memo-study.html" class="feature-card">
+      <span class="card-icon">📚</span>
+      <span class="card-label">学習メモ</span>
+    </a>
+    <a href="pages/memo-health.html" class="feature-card">
+      <span class="card-icon">❤️</span>
+      <span class="card-label">健康メモ</span>
+    </a>
+    <a href="pages/memo-training.html" class="feature-card">
+      <span class="card-icon">💪</span>
+      <span class="card-label">トレーニング</span>
+    </a>
+    <a href="pages/diary.html" class="feature-card">
+      <span class="card-icon">📓</span>
+      <span class="card-label">日記・ログ</span>
+    </a>
+  </main>
+
+  <script src="js/storage.js"></script>
+  <script>
+    // 日付表示
+    const d = new Date();
+    const dow = '日月火水木金土'[d.getDay()];
+    document.getElementById('homeDate').textContent =
+      `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${dow}）`;
+
+    // バッジ表示関数
+    function showBadge(id, count) {
+      const el = document.getElementById(id);
+      if (el && count > 0) {
+        el.textContent = count;
+        el.style.display = 'inline-flex';
+      }
+    }
+
+    // リマインダー：今日以前の未完了件数
+    const todayStr = new Date().toISOString().slice(0,10);
+    const reminders = Storage.get('life_reminders');
+    const pendingReminders = reminders.filter(r => !r.done && r.date && r.date <= todayStr);
+    showBadge('badgeReminder', pendingReminders.length);
+
+    // 在庫：最低在庫数以下の件数
+    const inventory = Storage.get('life_inventory');
+    const lowStock = inventory.filter(i => (i.currentCount || 0) <= (i.minCount || 0) && i.minCount > 0);
+    showBadge('badgeInventory', lowStock.length);
+
+    // 買い物リスト：未購入件数
+    const shopping = Storage.get('life_shopping');
+    const pendingShopping = shopping.filter(s => !s.bought);
+    showBadge('badgeShopping', pendingShopping.length);
+  </script>
+</body>
+</html>
