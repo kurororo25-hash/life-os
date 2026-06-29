@@ -14,6 +14,24 @@
   </style>
 </head>
 <body>
+  <!-- 通知許可バナー -->
+  <div id="notifBanner" class="hidden" style="
+    background:#4a7dff;color:white;padding:12px 16px;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    font-size:13px;font-weight:600;">
+    <span style="flex:1">⏰ リマインダーの通知を受け取りますか？</span>
+    <button onclick="Notif.requestPermission()" style="
+      background:white;color:#4a7dff;border:none;border-radius:6px;
+      padding:6px 14px;font-weight:700;cursor:pointer;font-size:13px;">
+      許可する
+    </button>
+    <button onclick="document.getElementById('notifBanner').classList.add('hidden')" style="
+      background:transparent;color:white;border:1px solid rgba(255,255,255,0.6);
+      border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px;">
+      後で
+    </button>
+  </div>
+
   <header class="home-header">
     <h1>🏠 生活OS</h1>
     <p class="home-date" id="homeDate"></p>
@@ -62,7 +80,11 @@
   </main>
 
   <script src="js/storage.js"></script>
+  <script src="js/notifications.js"></script>
   <script>
+    // 通知の初期化（許可確認・リマインダーチェック）
+    Notif.init();
+
     // 日付表示
     const d = new Date();
     const dow = '日月火水木金土'[d.getDay()];
