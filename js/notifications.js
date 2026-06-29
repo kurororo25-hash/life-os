@@ -41,17 +41,25 @@ const Notif = {
   async checkReminders() {
     if (Notification.permission !== 'granted') return;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const all   = JSON.parse(localStorage.getItem('life_reminders') || '[]');
+    const now     = new Date();
+    const today   = now.toISOString().slice(0, 10);
+    const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const all     = JSON.parse(localStorage.getItem('life_reminders') || '[]');
 
-    const dueToday = all.filter(r => !r.done && r.date === today);
-    const overdue  = all.filter(r => !r.done && r.date && r.date < today);
+    // 今日が期限で、時刻未設定 or 時刻を過ぎているものだけ通知
+    const dueToday = all.filter(r =>
+      !r.done && r.date === today && (!r.time || r.time <= nowTime)
+    );
+    // 昨日以前の期限切れ
+    const overdue = all.filter(r =>
+      !r.done && r.date && r.date < today
+    );
 
     const reg = await navigator.serviceWorker.ready;
 
     if (dueToday.length > 0) {
       reg.showNotification(`⏰ 今日のリマインダー（${dueToday.length}件）`, {
-        body:     dueToday.slice(0, 3).map(r => `・${r.title}`).join('\n'),
+        body:     dueToday.slice(0, 3).map(r => `・${r.time ? r.time + ' ' : ''}${r.title}`).join('\n'),
         icon:     './icon.png',
         tag:      'reminder-today',
         renotify: false
