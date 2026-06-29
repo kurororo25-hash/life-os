@@ -14,6 +14,7 @@
 const GCal = (() => {
   const SCOPES      = 'https://www.googleapis.com/auth/calendar.events';
   const DISCOVERY   = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+  const HARDCODED_CLIENT_ID = '306443567956-en4g26uhd8s8lpme7r0d9ha37aqehm9o.apps.googleusercontent.com';
   const STORAGE_KEY = 'gcal_client_id';
   const TOKEN_KEY   = 'gcal_token';
 
@@ -195,13 +196,14 @@ const GCal = (() => {
     let ok = 0, fail = 0;
     for (const r of reminders) {
       try {
+        const { start, end } = _buildStartEnd(r.date, r.time);
         await gapi.client.calendar.events.insert({
           calendarId: 'primary',
           resource: {
             summary:     r.title,
             description: r.notes || '',
-            start: { date: r.date },
-            end:   { date: r.date }
+            start,
+            end
           }
         });
         ok++;
@@ -247,22 +249,40 @@ const GCal = (() => {
   }
 
   function _getClientId() {
-    return localStorage.getItem(STORAGE_KEY) || '';
+    return localStorage.getItem(STORAGE_KEY) || HARDCODED_CLIENT_ID;
   }
 
   /* --------------------------------------------------
    * リマインダー1件をGoogleカレンダーに追加（保存時の自動同期用）
    * -------------------------------------------------- */
+  function _buildStartEnd(date, time) {
+    if (time) {
+      const [h, m] = time.split(':').map(Number);
+      const totalMin = h * 60 + m + 30;
+      const endH = String(Math.floor(totalMin / 60) % 24).padStart(2, '0');
+      const endM = String(totalMin % 60).padStart(2, '0');
+      return {
+        start: { dateTime: `${date}T${time}:00`, timeZone: 'Asia/Tokyo' },
+        end:   { dateTime: `${date}T${endH}:${endM}:00`, timeZone: 'Asia/Tokyo' }
+      };
+    }
+    return {
+      start: { date },
+      end:   { date }
+    };
+  }
+
   async function syncReminder(reminder) {
     if (!accessToken || !reminder.date) return;
     try {
+      const { start, end } = _buildStartEnd(reminder.date, reminder.time);
       const res = await gapi.client.calendar.events.insert({
         calendarId: 'primary',
         resource: {
           summary:     reminder.title,
           description: reminder.notes || '',
-          start: { date: reminder.date },
-          end:   { date: reminder.date }
+          start,
+          end
         }
       });
       Storage.update('life_reminders', reminder.id, { gcalEventId: res.result.id });
