@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>習慣チェック - 生活OS</title>
+  <link rel="manifest" href="../manifest.json">
+  <link rel="stylesheet" href="../css/style.css">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    .progress-wrap {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px 16px;
+    }
+
+    .progress-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .progress-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-sub);
+    }
+
+    .progress-count {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .progress-bar-bg {
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), #7aa8ff);
+      border-radius: 99px;
+      transition: width 0.35s ease;
+    }
+
+    .all-done-banner {
+      background: var(--success-light);
+      color: var(--success);
+      text-align: center;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      border-bottom: 1px solid #bbf7d0;
+      display: none;
+    }
+
+    .section-header {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      padding: 16px 16px 6px;
+    }
+
+    .habit-row {
+      display: flex;
+      align-items: center;
+      background: var(--card);
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      transition: background 0.1s;
+      gap: 14px;
+    }
+
+    .habit-row:active { background: #f8f9fb; }
+
+    .habit-row:last-child { border-bottom: none; }
+
+    .habit-check {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .habit-row.done .habit-check {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .check-icon {
+      display: none;
+      color: white;
+      font-size: 14px;
+      line-height: 1;
+      margin-top: -1px;
+    }
+
+    .habit-row.done .check-icon { display: block; }
+
+    .habit-label {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      transition: color 0.15s;
+    }
+
+    .habit-row.done .habit-label {
+      color: var(--text-muted);
+      text-decoration: line-through;
+    }
+
+    .section-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin: 0 16px 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="page-header">
+    <button class="back-btn" onclick="history.back()">← 戻る</button>
+    <h1>習慣チェック</h1>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-top">
+      <span class="progress-text" id="progressDate"></span>
+      <span class="progress-count" id="progressCount"></span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="all-done-banner" id="allDoneBanner">🎉 今日のルーティン全部完了！</div>
+
+  <main class="page-main" style="padding-top:12px;">
+
+    <div class="section-header">🌅 朝のルーティン</div>
+    <div class="section-card" id="morningList"></div>
+
+    <div class="section-header">🌙 夜のルーティン</div>
+    <div class="section-card" id="eveningList"></div>
+
+  </main>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script>
+    const HABITS = {
+      morning: ['薬を飲む', 'サプリを飲む', 'プロテインを飲む', '歯磨き', '光浴', 'ひげ剃り'],
+      evening: ['歯磨き', 'フロス', 'アロマ', '加湿器'],
+    };
+
+    const STORAGE_KEY = 'life_habit';
+    const TOTAL = HABITS.morning.length + HABITS.evening.length;
+
+    function todayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch { return null; }
+    }
+
+    function saveState(s) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    }
+
+    function freshState() {
+      const s = { date: todayStr(), checks: {} };
+      for (let i = 0; i < TOTAL; i++) s.checks[i] = false;
+      return s;
+    }
+
+    let state = loadState();
+    if (!state || state.date !== todayStr()) {
+      state = freshState();
+      saveState(state);
+    }
+
+    function updateProgress() {
+      const done = Object.values(state.checks).filter(Boolean).length;
+      const pct = Math.round(done / TOTAL * 100);
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressCount').textContent = `${done} / ${TOTAL}`;
+      document.getElementById('allDoneBanner').style.display = done === TOTAL ? 'block' : 'none';
+    }
+
+    function renderSection(containerId, items, offset) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      items.forEach((label, i) => {
+        const idx = offset + i;
+        const row = document.createElement('div');
+        row.className = 'habit-row' + (state.checks[idx] ? ' done' : '');
+        row.innerHTML = `
+          <div class="habit-check"><span class="check-icon">✓</span></div>
+          <div class="habit-label">${label}</div>
+        `;
+        row.addEventListener('click', () => {
+          state.checks[idx] = !state.checks[idx];
+          saveState(state);
+          row.classList.toggle('done', state.checks[idx]);
+          updateProgress();
+        });
+        container.appendChild(row);
+      });
+    }
+
+    const today = new Date();
+    const dow = '日月火水木金土'[today.getDay()];
+    document.getElementById('progressDate').textContent =
+      `${today.getMonth()+1}月${today.getDate()}日（${dow}）`;
+
+    renderSection('morningList', HABITS.morning, 0);
+    renderSection('eveningList', HABITS.evening, HABITS.morning.length);
+    updateProgress();
+  </script>
+</body>
+</html>

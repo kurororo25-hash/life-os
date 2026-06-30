@@ -77,6 +77,11 @@
       <span class="card-icon">📓</span>
       <span class="card-label">日記・ログ</span>
     </a>
+    <a href="pages/habit.html" class="feature-card">
+      <span class="card-icon">✅</span>
+      <span class="card-label">習慣チェック</span>
+      <span class="card-badge" id="badgeHabit"></span>
+    </a>
   </main>
 
   <script src="js/storage.js"></script>
@@ -115,6 +120,20 @@
     const shopping = Storage.get('life_shopping');
     const pendingShopping = shopping.filter(s => !s.bought);
     showBadge('badgeShopping', pendingShopping.length);
+
+    // 習慣チェック：当日の未完了件数
+    try {
+      const habitRaw = localStorage.getItem('life_habit');
+      if (habitRaw) {
+        const habit = JSON.parse(habitRaw);
+        if (habit.date === todayStr) {
+          const total = Object.keys(habit.checks).length;
+          const done = Object.values(habit.checks).filter(Boolean).length;
+          const remaining = total - done;
+          if (remaining > 0) showBadge('badgeHabit', remaining);
+        }
+      }
+    } catch {}
   </script>
 </body>
 </html>
