@@ -67,6 +67,17 @@
       padding: 16px 16px 6px;
     }
 
+    .section-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin: 0 16px 12px;
+    }
+
+    .section-wrap { display: block; }
+    .section-wrap.empty { display: none; }
+
     .habit-row {
       display: flex;
       align-items: center;
@@ -81,7 +92,6 @@
     }
 
     .habit-row:active { background: #f8f9fb; }
-
     .habit-row:last-child { border-bottom: none; }
 
     .habit-check {
@@ -96,9 +106,9 @@
       transition: background 0.15s, border-color 0.15s;
     }
 
-    .habit-row.done .habit-check {
-      background: var(--primary);
-      border-color: var(--primary);
+    .done-row .habit-check {
+      background: var(--success);
+      border-color: var(--success);
     }
 
     .check-icon {
@@ -109,26 +119,25 @@
       margin-top: -1px;
     }
 
-    .habit-row.done .check-icon { display: block; }
+    .done-row .check-icon { display: block; }
 
     .habit-label {
       font-size: 15px;
       font-weight: 500;
       color: var(--text);
-      transition: color 0.15s;
     }
 
-    .habit-row.done .habit-label {
+    .done-row .habit-label {
       color: var(--text-muted);
       text-decoration: line-through;
     }
 
-    .section-card {
-      background: var(--card);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-      margin: 0 16px 12px;
+    .done-section-header {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--success);
+      letter-spacing: 0.08em;
+      padding: 16px 16px 6px;
     }
   </style>
 </head>
@@ -153,11 +162,20 @@
 
   <main class="page-main" style="padding-top:12px;">
 
-    <div class="section-header">🌅 朝のルーティン</div>
-    <div class="section-card" id="morningList"></div>
+    <div class="section-wrap" id="wrapMorning">
+      <div class="section-header">🌅 朝のルーティン</div>
+      <div class="section-card" id="morningList"></div>
+    </div>
 
-    <div class="section-header">🌙 夜のルーティン</div>
-    <div class="section-card" id="eveningList"></div>
+    <div class="section-wrap" id="wrapEvening">
+      <div class="section-header">🌙 夜のルーティン</div>
+      <div class="section-card" id="eveningList"></div>
+    </div>
+
+    <div class="section-wrap empty" id="wrapDone">
+      <div class="done-section-header">✅ 終了</div>
+      <div class="section-card" id="doneList"></div>
+    </div>
 
   </main>
 
@@ -170,8 +188,13 @@
       evening: ['歯磨き', 'フロス', 'アロマ', '加湿器'],
     };
 
+    const ALL_HABITS = [
+      ...HABITS.morning.map((label, i) => ({ label, idx: i, section: 'morning' })),
+      ...HABITS.evening.map((label, i) => ({ label, idx: HABITS.morning.length + i, section: 'evening' })),
+    ];
+
     const STORAGE_KEY = 'life_habit';
-    const TOTAL = HABITS.morning.length + HABITS.evening.length;
+    const TOTAL = ALL_HABITS.length;
 
     function todayStr() {
       const d = new Date();
@@ -202,33 +225,51 @@
       saveState(state);
     }
 
-    function updateProgress() {
-      const done = Object.values(state.checks).filter(Boolean).length;
-      const pct = Math.round(done / TOTAL * 100);
-      document.getElementById('progressFill').style.width = pct + '%';
-      document.getElementById('progressCount').textContent = `${done} / ${TOTAL}`;
-      document.getElementById('allDoneBanner').style.display = done === TOTAL ? 'block' : 'none';
+    function makeRow(habit, isDone) {
+      const row = document.createElement('div');
+      row.className = 'habit-row' + (isDone ? ' done-row' : '');
+      row.innerHTML = `<div class="habit-check"><span class="check-icon">✓</span></div><div class="habit-label">${habit.label}</div>`;
+      row.addEventListener('click', () => {
+        state.checks[habit.idx] = !state.checks[habit.idx];
+        saveState(state);
+        render();
+      });
+      return row;
     }
 
-    function renderSection(containerId, items, offset) {
-      const container = document.getElementById(containerId);
-      container.innerHTML = '';
-      items.forEach((label, i) => {
-        const idx = offset + i;
-        const row = document.createElement('div');
-        row.className = 'habit-row' + (state.checks[idx] ? ' done' : '');
-        row.innerHTML = `
-          <div class="habit-check"><span class="check-icon">✓</span></div>
-          <div class="habit-label">${label}</div>
-        `;
-        row.addEventListener('click', () => {
-          state.checks[idx] = !state.checks[idx];
-          saveState(state);
-          row.classList.toggle('done', state.checks[idx]);
-          updateProgress();
-        });
-        container.appendChild(row);
+    function render() {
+      const morningEl = document.getElementById('morningList');
+      const eveningEl = document.getElementById('eveningList');
+      const doneEl    = document.getElementById('doneList');
+
+      morningEl.innerHTML = '';
+      eveningEl.innerHTML = '';
+      doneEl.innerHTML    = '';
+
+      const pending = { morning: [], evening: [] };
+      const done = [];
+
+      ALL_HABITS.forEach(habit => {
+        if (state.checks[habit.idx]) {
+          done.push(habit);
+        } else {
+          pending[habit.section].push(habit);
+        }
       });
+
+      pending.morning.forEach(h => morningEl.appendChild(makeRow(h, false)));
+      pending.evening.forEach(h => eveningEl.appendChild(makeRow(h, false)));
+      done.forEach(h => doneEl.appendChild(makeRow(h, true)));
+
+      document.getElementById('wrapMorning').classList.toggle('empty', pending.morning.length === 0);
+      document.getElementById('wrapEvening').classList.toggle('empty', pending.evening.length === 0);
+      document.getElementById('wrapDone').classList.toggle('empty', done.length === 0);
+
+      const doneCount = done.length;
+      const pct = Math.round(doneCount / TOTAL * 100);
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressCount').textContent = `${doneCount} / ${TOTAL}`;
+      document.getElementById('allDoneBanner').style.display = doneCount === TOTAL ? 'block' : 'none';
     }
 
     const today = new Date();
@@ -236,9 +277,7 @@
     document.getElementById('progressDate').textContent =
       `${today.getMonth()+1}月${today.getDate()}日（${dow}）`;
 
-    renderSection('morningList', HABITS.morning, 0);
-    renderSection('eveningList', HABITS.evening, HABITS.morning.length);
-    updateProgress();
+    render();
   </script>
 </body>
 </html>
