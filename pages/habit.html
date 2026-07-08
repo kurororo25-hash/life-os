@@ -125,6 +125,7 @@
       font-size: 15px;
       font-weight: 500;
       color: var(--text);
+      flex: 1;
     }
 
     .done-row .habit-label {
@@ -139,6 +140,53 @@
       letter-spacing: 0.08em;
       padding: 16px 16px 6px;
     }
+
+    .edit-toggle-btn.active-edit {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .reorder-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .reorder-btn {
+      width: 30px;
+      height: 22px;
+      font-size: 11px;
+      padding: 0;
+      color: var(--text-sub);
+    }
+
+    .reorder-btn:disabled {
+      opacity: 0.25;
+      cursor: default;
+    }
+
+    .empty-section-msg {
+      padding: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .add-habit-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: var(--card);
+      padding: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      border-top: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
@@ -146,9 +194,10 @@
   <header class="page-header">
     <button class="back-btn" onclick="history.back()">← 戻る</button>
     <h1>習慣チェック</h1>
+    <button class="btn-icon edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()">✏️</button>
   </header>
 
-  <div class="progress-wrap">
+  <div class="progress-wrap" id="progressWrap">
     <div class="progress-top">
       <span class="progress-text" id="progressDate"></span>
       <span class="progress-count" id="progressCount"></span>
@@ -179,44 +228,112 @@
 
   </main>
 
+  <button class="fab" id="addFab" onclick="openAddModal()">＋</button>
+
+  <!-- 追加・編集モーダル -->
+  <div class="modal-overlay hidden" id="habitModalOverlay" onclick="habitOverlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="habitModalTitle">習慣を追加</span>
+        <button class="btn-icon" onclick="closeHabitModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">習慣名 ＊</label>
+        <input type="text" class="form-input" id="fHabitLabel" placeholder="例：ストレッチ">
+      </div>
+      <div class="form-group">
+        <label class="form-label">時間帯</label>
+        <select class="form-select" id="fHabitSection">
+          <option value="morning">🌅 朝のルーティン</option>
+          <option value="evening">🌙 夜のルーティン</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeHabitModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveHabitModal()">保存する</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
   <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
   <script>
-    const HABITS = {
-      morning: ['薬を飲む', 'サプリを飲む', 'プロテインを飲む', '歯磨き', '光浴', 'ひげ剃り'],
-      evening: ['歯磨き', 'フロス', 'アロマ', '加湿器'],
-    };
-
-    const ALL_HABITS = [
-      ...HABITS.morning.map((label, i) => ({ label, idx: i, section: 'morning' })),
-      ...HABITS.evening.map((label, i) => ({ label, idx: HABITS.morning.length + i, section: 'evening' })),
-    ];
-
-    const STORAGE_KEY = 'life_habit';
-    const TOTAL = ALL_HABITS.length;
+    const HABITS_KEY = 'life_habit_habits';
+    const CHECKS_KEY = 'life_habit';
 
     function todayStr() {
       const d = new Date();
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
 
+    function genId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    function loadHabits() {
+      try {
+        const raw = localStorage.getItem(HABITS_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      return null;
+    }
+
+    function saveHabits(h) {
+      localStorage.setItem(HABITS_KEY, JSON.stringify(h));
+    }
+
+    function seedHabits() {
+      const mk = label => ({ id: genId(), label });
+      return {
+        morning: ['薬を飲む', 'サプリを飲む', 'プロテインを飲む', '歯磨き', '光浴', 'ひげ剃り'].map(mk),
+        evening: ['歯磨き', 'フロス', 'アロマ', '加湿器'].map(mk),
+      };
+    }
+
+    // 初回のみ：旧形式（idx指定チェック）から新形式（id指定チェック）へ本日分を引き継ぐ
+    let migratedChecks = null;
+    let habits = loadHabits();
+    if (!habits) {
+      habits = seedHabits();
+      try {
+        const rawOld = localStorage.getItem(CHECKS_KEY);
+        if (rawOld) {
+          const old = JSON.parse(rawOld);
+          if (old && old.date === todayStr() && old.checks) {
+            const orderedIds = [...habits.morning, ...habits.evening].map(h => h.id);
+            migratedChecks = {};
+            orderedIds.forEach((id, idx) => {
+              if (old.checks[idx]) migratedChecks[id] = true;
+            });
+          }
+        }
+      } catch {}
+      saveHabits(habits);
+    }
+
+    function getAllHabits() {
+      return [
+        ...habits.morning.map(h => ({ ...h, section: 'morning' })),
+        ...habits.evening.map(h => ({ ...h, section: 'evening' })),
+      ];
+    }
+
     function loadState() {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = localStorage.getItem(CHECKS_KEY);
         if (!raw) return null;
         return JSON.parse(raw);
       } catch { return null; }
     }
 
     function saveState(s) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      localStorage.setItem(CHECKS_KEY, JSON.stringify(s));
     }
 
     function freshState() {
-      const s = { date: todayStr(), checks: {} };
-      for (let i = 0; i < TOTAL; i++) s.checks[i] = false;
-      return s;
+      return { date: todayStr(), checks: migratedChecks || {} };
     }
 
     let state = loadState();
@@ -225,32 +342,163 @@
       saveState(state);
     }
 
+    let editMode = false;
+    let editingHabitId = null;
+    let editingHabitSection = null;
+
+    function toggleEditMode() {
+      editMode = !editMode;
+      const btn = document.getElementById('editToggleBtn');
+      btn.textContent = editMode ? '完了' : '✏️';
+      btn.classList.toggle('active-edit', editMode);
+      render();
+    }
+
+    function openAddModal() {
+      editingHabitId = null;
+      document.getElementById('habitModalTitle').textContent = '習慣を追加';
+      document.getElementById('fHabitLabel').value = '';
+      document.getElementById('fHabitSection').value = 'morning';
+      document.getElementById('habitModalOverlay').classList.remove('hidden');
+      setTimeout(() => document.getElementById('fHabitLabel').focus(), 120);
+    }
+
+    function openEditHabitModal(id) {
+      const h = getAllHabits().find(x => x.id === id);
+      if (!h) return;
+      editingHabitId = id;
+      editingHabitSection = h.section;
+      document.getElementById('habitModalTitle').textContent = '習慣を編集';
+      document.getElementById('fHabitLabel').value = h.label;
+      document.getElementById('fHabitSection').value = h.section;
+      document.getElementById('habitModalOverlay').classList.remove('hidden');
+    }
+
+    function closeHabitModal() {
+      document.getElementById('habitModalOverlay').classList.add('hidden');
+      editingHabitId = null;
+    }
+
+    function habitOverlayClick(e) {
+      if (e.target === document.getElementById('habitModalOverlay')) closeHabitModal();
+    }
+
+    function saveHabitModal() {
+      const label = document.getElementById('fHabitLabel').value.trim();
+      if (!label) { alert('習慣名を入力してください'); return; }
+      const section = document.getElementById('fHabitSection').value;
+
+      if (editingHabitId) {
+        const oldSection = editingHabitSection;
+        const idx = habits[oldSection].findIndex(h => h.id === editingHabitId);
+        if (idx === -1) return;
+        const item = habits[oldSection][idx];
+        item.label = label;
+        if (oldSection !== section) {
+          habits[oldSection].splice(idx, 1);
+          habits[section].push(item);
+        }
+        showToast('更新しました ✓');
+      } else {
+        habits[section].push({ id: genId(), label });
+        showToast('追加しました ✓');
+      }
+      saveHabits(habits);
+      closeHabitModal();
+      render();
+    }
+
+    function deleteHabit(id, section) {
+      if (!confirmDelete('この習慣を削除しますか？')) return;
+      habits[section] = habits[section].filter(h => h.id !== id);
+      delete state.checks[id];
+      saveHabits(habits);
+      saveState(state);
+      render();
+    }
+
+    function moveHabit(id, section, dir) {
+      const arr = habits[section];
+      const idx = arr.findIndex(h => h.id === id);
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= arr.length) return;
+      [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+      saveHabits(habits);
+      render();
+    }
+
     function makeRow(habit, isDone) {
       const row = document.createElement('div');
       row.className = 'habit-row' + (isDone ? ' done-row' : '');
-      row.innerHTML = `<div class="habit-check"><span class="check-icon">✓</span></div><div class="habit-label">${habit.label}</div>`;
+      row.innerHTML = `<div class="habit-check"><span class="check-icon">✓</span></div><div class="habit-label">${esc(habit.label)}</div>`;
       row.addEventListener('click', () => {
-        state.checks[habit.idx] = !state.checks[habit.idx];
+        state.checks[habit.id] = !state.checks[habit.id];
         saveState(state);
         render();
       });
       return row;
     }
 
+    function makeEditRow(habit, isFirst, isLast) {
+      const row = document.createElement('div');
+      row.className = 'habit-row';
+      row.innerHTML = `
+        <div class="reorder-btns">
+          <button class="btn-icon reorder-btn" ${isFirst ? 'disabled' : ''}>▲</button>
+          <button class="btn-icon reorder-btn" ${isLast ? 'disabled' : ''}>▼</button>
+        </div>
+        <div class="habit-label">${esc(habit.label)}</div>
+        <button class="btn-icon delete-habit-btn">🗑️</button>`;
+      const [upBtn, downBtn] = row.querySelectorAll('.reorder-btn');
+      upBtn.addEventListener('click', e => { e.stopPropagation(); moveHabit(habit.id, habit.section, -1); });
+      downBtn.addEventListener('click', e => { e.stopPropagation(); moveHabit(habit.id, habit.section, 1); });
+      row.querySelector('.habit-label').addEventListener('click', () => openEditHabitModal(habit.id));
+      row.querySelector('.delete-habit-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        deleteHabit(habit.id, habit.section);
+      });
+      return row;
+    }
+
+    function renderEditSection(el, list, section) {
+      el.innerHTML = '';
+      if (list.length === 0) {
+        el.innerHTML = '<div class="empty-section-msg">習慣がありません</div>';
+        return;
+      }
+      list.forEach((h, i) => {
+        el.appendChild(makeEditRow({ ...h, section }, i === 0, i === list.length - 1));
+      });
+    }
+
     function render() {
+      document.getElementById('progressWrap').style.display = editMode ? 'none' : '';
+      document.getElementById('wrapDone').style.display = editMode ? 'none' : '';
+
       const morningEl = document.getElementById('morningList');
       const eveningEl = document.getElementById('eveningList');
       const doneEl    = document.getElementById('doneList');
+
+      if (editMode) {
+        renderEditSection(morningEl, habits.morning, 'morning');
+        renderEditSection(eveningEl, habits.evening, 'evening');
+        doneEl.innerHTML = '';
+        document.getElementById('wrapMorning').classList.remove('empty');
+        document.getElementById('wrapEvening').classList.remove('empty');
+        document.getElementById('allDoneBanner').style.display = 'none';
+        return;
+      }
 
       morningEl.innerHTML = '';
       eveningEl.innerHTML = '';
       doneEl.innerHTML    = '';
 
+      const allHabits = getAllHabits();
       const pending = { morning: [], evening: [] };
       const done = [];
 
-      ALL_HABITS.forEach(habit => {
-        if (state.checks[habit.idx]) {
+      allHabits.forEach(habit => {
+        if (state.checks[habit.id]) {
           done.push(habit);
         } else {
           pending[habit.section].push(habit);
@@ -265,17 +513,18 @@
       document.getElementById('wrapEvening').classList.toggle('empty', pending.evening.length === 0);
       document.getElementById('wrapDone').classList.toggle('empty', done.length === 0);
 
+      const total = allHabits.length;
       const doneCount = done.length;
-      const pct = Math.round(doneCount / TOTAL * 100);
+      const pct = total === 0 ? 0 : Math.round(doneCount / total * 100);
       document.getElementById('progressFill').style.width = pct + '%';
-      document.getElementById('progressCount').textContent = `${doneCount} / ${TOTAL}`;
-      document.getElementById('allDoneBanner').style.display = doneCount === TOTAL ? 'block' : 'none';
+      document.getElementById('progressCount').textContent = `${doneCount} / ${total}`;
+      document.getElementById('allDoneBanner').style.display = (total > 0 && doneCount === total) ? 'block' : 'none';
     }
 
-    const today = new Date();
-    const dow = '日月火水木金土'[today.getDay()];
+    const now = new Date();
+    const dow = '日月火水木金土'[now.getDay()];
     document.getElementById('progressDate').textContent =
-      `${today.getMonth()+1}月${today.getDate()}日（${dow}）`;
+      `${now.getMonth()+1}月${now.getDate()}日（${dow}）`;
 
     render();
   </script>
