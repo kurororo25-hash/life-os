@@ -57,6 +57,11 @@
       <span class="card-icon">🚐</span>
       <span class="card-label">車内荷物</span>
     </a>
+    <a href="pages/maintenance.html" class="feature-card">
+      <span class="card-icon">🔧</span>
+      <span class="card-label">整備管理</span>
+      <span class="card-badge" id="badgeMaintenance"></span>
+    </a>
     <a href="pages/memo-work.html" class="feature-card">
       <span class="card-icon">💼</span>
       <span class="card-label">仕事メモ</span>
@@ -120,6 +125,34 @@
     const shopping = Storage.get('life_shopping');
     const pendingShopping = shopping.filter(s => !s.bought);
     showBadge('badgeShopping', pendingShopping.length);
+
+    // 整備管理：期限切れ・まもなく の件数
+    try {
+      const maintenance = Storage.get('life_maintenance');
+      let maintMeta = {};
+      try { maintMeta = JSON.parse(localStorage.getItem('life_maintenance_meta') || '{}'); } catch {}
+
+      function addMonths(dateStr, months) {
+        const d = new Date(dateStr + 'T00:00:00');
+        d.setMonth(d.getMonth() + Number(months));
+        return d;
+      }
+
+      const dueSoonCount = maintenance.filter(item => {
+        const nextDate = addMonths(item.lastDate, item.intervalMonths);
+        const daysLeft = Math.round((nextDate - new Date(todayStr + 'T00:00:00')) / 86400000);
+        const ratioDate = daysLeft / (item.intervalMonths * 30);
+
+        let ratioKm = null;
+        if (item.intervalKm && item.lastMileage != null && maintMeta.mileage != null) {
+          const kmLeft = (item.lastMileage + item.intervalKm) - maintMeta.mileage;
+          ratioKm = kmLeft / item.intervalKm;
+        }
+        const ratio = ratioKm != null ? Math.min(ratioDate, ratioKm) : ratioDate;
+        return ratio <= 0.15;
+      }).length;
+      showBadge('badgeMaintenance', dueSoonCount);
+    } catch {}
 
     // 習慣チェック：当日の未完了件数
     try {

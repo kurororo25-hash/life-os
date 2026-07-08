@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>整備管理 | 生活OS</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>🔧 整備管理</h1>
+  </header>
+
+  <main class="page-main">
+    <div class="card" style="margin-bottom:12px">
+      <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;color:var(--text-sub, #888)">🚗 現在の走行距離</div>
+          <div style="font-size:20px;font-weight:700" id="mileageDisplay">未設定</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="editMileage()">✏️ 更新</button>
+      </div>
+    </div>
+
+    <div id="listContainer"></div>
+  </main>
+
+  <button class="fab" onclick="openModal()">＋</button>
+
+  <div class="modal-overlay hidden" id="modalOverlay" onclick="overlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="modalTitle">整備項目を追加</span>
+        <button class="btn-icon" onclick="closeModal()">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">項目 ＊</label>
+        <select class="form-select" id="fPreset" onchange="applyPreset()">
+          <option value="">選択してください</option>
+        </select>
+      </div>
+      <div class="form-group hidden" id="customNameGroup">
+        <label class="form-label">項目名（自由入力）＊</label>
+        <input type="text" class="form-input" id="fName" placeholder="例：ワイパーゴム交換">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">前回実施日 ＊</label>
+          <input type="date" class="form-input" id="fLastDate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">頻度（月数）＊</label>
+          <input type="number" class="form-input" id="fIntervalMonths" min="1" placeholder="例：6">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">目安走行距離(km)（任意）</label>
+          <input type="number" class="form-input" id="fIntervalKm" min="0" placeholder="例：5000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">前回実施時の走行距離(km)（任意）</label>
+          <input type="number" class="form-input" id="fLastMileage" min="0" placeholder="例：32000">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">メモ</label>
+        <textarea class="form-textarea" id="fNotes" placeholder="店舗名・部品番号など（任意）"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveItem()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const KEY      = 'life_maintenance';
+    const META_KEY = 'life_maintenance_meta';
+    let editingId  = null;
+
+    // 項目名 → 目安頻度のプリセット（一般的な軽自動車・バンの目安）
+    const PRESETS = [
+      { name: 'エンジンオイル交換',           months: 6,  km: 5000  },
+      { name: 'オイルエレメント交換',         months: 12, km: 10000 },
+      { name: '車検',                        months: 24, km: null  },
+      { name: 'ブレーキパッド点検・交換',     months: 12, km: 20000 },
+      { name: 'タイヤ点検・ローテーション',   months: 6,  km: 10000 },
+      { name: 'バッテリー交換',               months: 30, km: null  },
+      { name: 'ワイパーゴム交換',             months: 12, km: null  },
+      { name: 'エアコンフィルター交換',       months: 12, km: null  },
+      { name: 'その他（自由入力）',           months: null, km: null, custom: true }
+    ];
+
+    function initPresetSelect() {
+      const sel = document.getElementById('fPreset');
+      PRESETS.forEach((p, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+    }
+
+    function applyPreset() {
+      const idx = document.getElementById('fPreset').value;
+      const customGroup = document.getElementById('customNameGroup');
+      if (idx === '') { customGroup.classList.add('hidden'); return; }
+      const preset = PRESETS[idx];
+      if (preset.custom) {
+        customGroup.classList.remove('hidden');
+        document.getElementById('fName').value = '';
+      } else {
+        customGroup.classList.add('hidden');
+        document.getElementById('fName').value = preset.name;
+        if (preset.months != null) document.getElementById('fIntervalMonths').value = preset.months;
+        if (preset.km != null) document.getElementById('fIntervalKm').value = preset.km;
+      }
+    }
+
+    function getMeta() {
+      try { return JSON.parse(localStorage.getItem(META_KEY) || '{}'); } catch { return {}; }
+    }
+
+    function setMeta(meta) {
+      localStorage.setItem(META_KEY, JSON.stringify(meta));
+    }
+
+    function editMileage() {
+      const meta = getMeta();
+      const cur = meta.mileage != null ? meta.mileage : '';
+      const val = prompt('現在の走行距離（km）を入力してください', cur);
+      if (val === null) return;
+      const num = parseInt(val);
+      if (isNaN(num) || num < 0) { alert('正しい数値を入力してください'); return; }
+      setMeta({ mileage: num, updatedAt: new Date().toISOString() });
+      showToast('走行距離を更新しました ✓');
+      renderMileage();
+      render();
+    }
+
+    function renderMileage() {
+      const meta = getMeta();
+      const el = document.getElementById('mileageDisplay');
+      el.textContent = meta.mileage != null ? `${meta.mileage.toLocaleString()} km` : '未設定';
+    }
+
+    function addMonths(dateStr, months) {
+      const d = new Date(dateStr + 'T00:00:00');
+      d.setMonth(d.getMonth() + Number(months));
+      return d.toISOString().slice(0, 10);
+    }
+
+    function daysBetween(fromStr, toStr) {
+      const a = new Date(fromStr + 'T00:00:00');
+      const b = new Date(toStr + 'T00:00:00');
+      return Math.round((b - a) / 86400000);
+    }
+
+    // 整備1件の状態（期限日・残り日数・残りkm・緊急度比率）を計算
+    function computeStatus(item) {
+      const todayStr = today();
+      const nextDate = addMonths(item.lastDate, item.intervalMonths);
+      const daysLeft = daysBetween(todayStr, nextDate);
+      const totalDays = item.intervalMonths * 30;
+      const ratioDate = daysLeft / totalDays;
+
+      let ratioKm = null, kmLeft = null;
+      const meta = getMeta();
+      if (item.intervalKm && item.lastMileage != null && meta.mileage != null) {
+        const dueMileage = item.lastMileage + item.intervalKm;
+        kmLeft = dueMileage - meta.mileage;
+        ratioKm = kmLeft / item.intervalKm;
+      }
+
+      const ratio = ratioKm != null ? Math.min(ratioDate, ratioKm) : ratioDate;
+
+      let level = 'ok';
+      if (ratio <= 0) level = 'overdue';
+      else if (ratio <= 0.15) level = 'soon';
+
+      return { nextDate, daysLeft, kmLeft, ratio, level };
+    }
+
+    function openModal(id) {
+      editingId = id || null;
+      document.getElementById('modalTitle').textContent = id ? '整備項目を編集' : '整備項目を追加';
+      document.getElementById('modalOverlay').classList.remove('hidden');
+      document.getElementById('customNameGroup').classList.add('hidden');
+
+      if (id) {
+        const item = Storage.get(KEY).find(i => i.id === id);
+        if (item) {
+          document.getElementById('fPreset').value = '';
+          document.getElementById('fName').value          = item.name || '';
+          document.getElementById('fLastDate').value       = item.lastDate || today();
+          document.getElementById('fIntervalMonths').value = item.intervalMonths || '';
+          document.getElementById('fIntervalKm').value     = item.intervalKm || '';
+          document.getElementById('fLastMileage').value    = item.lastMileage != null ? item.lastMileage : '';
+          document.getElementById('fNotes').value          = item.notes || '';
+          document.getElementById('customNameGroup').classList.remove('hidden');
+        }
+      } else {
+        document.getElementById('fPreset').value = '';
+        document.getElementById('fName').value = '';
+        document.getElementById('fLastDate').value = today();
+        document.getElementById('fIntervalMonths').value = '';
+        document.getElementById('fIntervalKm').value = '';
+        document.getElementById('fLastMileage').value = '';
+        document.getElementById('fNotes').value = '';
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.add('hidden');
+      editingId = null;
+    }
+
+    function overlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    function saveItem() {
+      const name = document.getElementById('fName').value.trim();
+      const lastDate = document.getElementById('fLastDate').value;
+      const intervalMonths = parseInt(document.getElementById('fIntervalMonths').value);
+
+      if (!name) { alert('項目名を入力してください'); return; }
+      if (!lastDate) { alert('前回実施日を入力してください'); return; }
+      if (!intervalMonths || intervalMonths < 1) { alert('頻度（月数）を正しく入力してください'); return; }
+
+      const intervalKmVal = document.getElementById('fIntervalKm').value;
+      const lastMileageVal = document.getElementById('fLastMileage').value;
+
+      const data = {
+        name,
+        lastDate,
+        intervalMonths,
+        intervalKm:  intervalKmVal  !== '' ? parseInt(intervalKmVal)  : null,
+        lastMileage: lastMileageVal !== '' ? parseInt(lastMileageVal) : null,
+        notes: document.getElementById('fNotes').value.trim()
+      };
+
+      if (editingId) {
+        Storage.update(KEY, editingId, data);
+        showToast('更新しました ✓');
+      } else {
+        Storage.add(KEY, data);
+        showToast('追加しました ✓');
+      }
+      closeModal();
+      render();
+    }
+
+    function deleteItem(id) {
+      if (!confirmDelete('この整備項目を削除しますか？')) return;
+      Storage.remove(KEY, id);
+      showToast('削除しました');
+      render();
+    }
+
+    // 実施済みにする：基準日・基準走行距離を今日/現在値にリセット（次回サイクルへ）
+    function markDone(id) {
+      const item = Storage.get(KEY).find(i => i.id === id);
+      if (!item) return;
+      const meta = getMeta();
+      const updates = { lastDate: today() };
+      if (item.intervalKm != null && meta.mileage != null) {
+        updates.lastMileage = meta.mileage;
+      }
+      Storage.update(KEY, id, updates);
+      showToast('実施済みにしました ✓');
+      render();
+    }
+
+    function levelBadge(level) {
+      if (level === 'overdue') return '<span class="badge badge-danger">期限切れ</span>';
+      if (level === 'soon')    return '<span class="badge badge-warning">まもなく</span>';
+      return '';
+    }
+
+    function render() {
+      const items = Storage.get(KEY);
+      const container = document.getElementById('listContainer');
+
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🔧</div>
+            <div class="empty-state-text">登録された整備項目がありません</div>
+            <div class="empty-state-sub">＋ ボタンで追加できます</div>
+          </div>`;
+        return;
+      }
+
+      // 緊急度（期限までの割合が小さい＝対応が必要なもの）が高い順に並べる
+      const withStatus = items.map(item => ({ item, status: computeStatus(item) }));
+      withStatus.sort((a, b) => a.status.ratio - b.status.ratio);
+
+      let html = '<div class="card">';
+      withStatus.forEach(({ item, status }) => {
+        const kmInfo = (item.intervalKm != null)
+          ? ` ／ 目安${item.intervalKm.toLocaleString()}km${status.kmLeft != null ? `（残り${status.kmLeft.toLocaleString()}km）` : ''}`
+          : '';
+        const dateInfo = status.daysLeft >= 0
+          ? `次回目安: ${formatDate(status.nextDate)}（あと${status.daysLeft}日）`
+          : `次回目安: ${formatDate(status.nextDate)}（${Math.abs(status.daysLeft)}日超過）`;
+
+        html += `
+          <div class="list-item" style="background:${status.level === 'overdue' ? 'var(--danger-light)' : status.level === 'soon' ? 'var(--warning-light)' : ''}">
+            <div class="list-item-body">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span class="list-item-title">${esc(item.name)}</span>
+                ${levelBadge(status.level)}
+              </div>
+              <div class="list-item-sub">前回: ${formatDate(item.lastDate)} ／ ${item.intervalMonths}ヶ月${kmInfo}</div>
+              <div class="list-item-sub">${dateInfo}</div>
+              ${item.notes ? `<div class="list-item-sub">${esc(item.notes)}</div>` : ''}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
+              <button class="btn btn-sm btn-primary" onclick="markDone('${item.id}')">✅ 実施済み</button>
+              <div style="display:flex;gap:4px;align-items:center">
+                <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+                <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+              </div>
+            </div>
+          </div>`;
+      });
+      html += '</div>';
+
+      container.innerHTML = html;
+    }
+
+    initPresetSelect();
+    renderMileage();
+    render();
+  </script>
+</body>
+</html>
