@@ -35,6 +35,7 @@ life-os/
 │   ├── common.js       全ページ共通ユーティリティ（toast・日付・削除確認など）
 │   └── memo-base.js    メモ系ページ共通ロジック（4ページで共有）
 ├── pages/
+│   ├── timebox.html    タイムボクシング
 │   ├── reminder.html   リマインダー
 │   ├── inventory.html  在庫管理
 │   ├── shopping.html   買い物リスト
@@ -56,6 +57,7 @@ life-os/
 
 | キー名 | 使用ページ | 主な項目 |
 |--------|-----------|---------|
+| `life_timebox`       | timebox.html    | date, title, startTime, endTime（30分固定）, done, gcalEventId |
 | `life_reminders`     | reminder.html   | title, date, repeat, priority, done, notes |
 | `life_inventory`     | inventory.html  | name, category, unit, currentCount, minCount, location, notes |
 | `life_shopping`      | shopping.html   | name, quantity, category, source, inventoryId, bought, notes |
@@ -102,4 +104,5 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-07-12 | タイムボクシング（timebox.html）を追加。日単位の視覚的タイムライン＋予定リスト |
 | 2026-06-29 | 初期作成。全12機能ページ＋共通CSS/JS を構築 |

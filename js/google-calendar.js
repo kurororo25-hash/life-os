@@ -293,7 +293,64 @@ const GCal = (() => {
   }
 
   /* --------------------------------------------------
+   * タイムボクシング → Googleカレンダーに同期
+   * （開始・終了時刻を直接指定できる版）
+   * -------------------------------------------------- */
+  function _buildStartEndRange(date, startTime, endTime) {
+    return {
+      start: { dateTime: `${date}T${startTime}:00`, timeZone: 'Asia/Tokyo' },
+      end:   { dateTime: `${date}T${endTime}:00`,   timeZone: 'Asia/Tokyo' }
+    };
+  }
+
+  async function syncTimeboxItem(item) {
+    if (!accessToken || !item.date) return;
+    try {
+      const { start, end } = _buildStartEndRange(item.date, item.startTime, item.endTime);
+      const res = await gapi.client.calendar.events.insert({
+        calendarId: 'primary',
+        resource: {
+          summary: item.title,
+          start,
+          end
+        }
+      });
+      Storage.update('life_timebox', item.id, { gcalEventId: res.result.id });
+      showToast('Googleカレンダーにも追加しました 📅');
+    } catch (e) {
+      console.warn('[GCal] syncTimeboxItem failed:', e);
+    }
+  }
+
+  async function syncAllTimebox(items) {
+    if (!accessToken) { showToast('先にGoogleにログインしてください'); return; }
+    let ok = 0, fail = 0;
+    for (const item of items) {
+      try {
+        const { start, end } = _buildStartEndRange(item.date, item.startTime, item.endTime);
+        const res = await gapi.client.calendar.events.insert({
+          calendarId: 'primary',
+          resource: {
+            summary: item.title,
+            start,
+            end
+          }
+        });
+        Storage.update('life_timebox', item.id, { gcalEventId: res.result.id });
+        ok++;
+      } catch (e) {
+        console.warn('[GCal] sync error:', e);
+        fail++;
+      }
+    }
+    showToast(fail === 0
+      ? `${ok}件をGoogleカレンダーに追加しました`
+      : `${ok}件成功、${fail}件失敗しました`);
+    renderGCalEvents();
+  }
+
+  /* --------------------------------------------------
    * 公開API
    * -------------------------------------------------- */
-  return { gapiLoaded, gisLoaded, signIn, signOut, isSignedIn, openSetup, closeSetup, saveClientId, renderGCalEvents, syncAll, syncReminder };
+  return { gapiLoaded, gisLoaded, signIn, signOut, isSignedIn, openSetup, closeSetup, saveClientId, renderGCalEvents, syncAll, syncReminder, syncTimeboxItem, syncAllTimebox };
 })();

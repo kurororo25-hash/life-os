@@ -43,6 +43,11 @@
       <span class="card-label">リマインダー</span>
       <span class="card-badge" id="badgeReminder"></span>
     </a>
+    <a href="pages/timebox.html" class="feature-card">
+      <span class="card-icon">⏱️</span>
+      <span class="card-label">タイムボクシング</span>
+      <span class="card-badge" id="badgeTimebox"></span>
+    </a>
     <a href="pages/inventory.html" class="feature-card">
       <span class="card-icon">📦</span>
       <span class="card-label">在庫管理</span>
@@ -121,6 +126,11 @@
     const lowStock = inventory.filter(i => (i.currentCount || 0) <= (i.minCount || 0) && i.minCount > 0);
     showBadge('badgeInventory', lowStock.length);
 
+    // タイムボクシング：今日の未完了件数
+    const timebox = Storage.get('life_timebox');
+    const pendingTimebox = timebox.filter(t => !t.done && t.date === todayStr);
+    showBadge('badgeTimebox', pendingTimebox.length);
+
     // 買い物リスト：未購入件数
     const shopping = Storage.get('life_shopping');
     const pendingShopping = shopping.filter(s => !s.bought);
@@ -132,24 +142,15 @@
       let maintMeta = {};
       try { maintMeta = JSON.parse(localStorage.getItem('life_maintenance_meta') || '{}'); } catch {}
 
-      function addMonths(dateStr, months) {
-        const d = new Date(dateStr + 'T00:00:00');
-        d.setMonth(d.getMonth() + Number(months));
-        return d;
-      }
-
       const dueSoonCount = maintenance.filter(item => {
-        const nextDate = addMonths(item.lastDate, item.intervalMonths);
-        const daysLeft = Math.round((nextDate - new Date(todayStr + 'T00:00:00')) / 86400000);
-        const ratioDate = daysLeft / (item.intervalMonths * 30);
+        const daysLeft = item.nextDate
+          ? Math.round((new Date(item.nextDate + 'T00:00:00') - new Date(todayStr + 'T00:00:00')) / 86400000)
+          : null;
+        const kmLeft = (item.nextKm != null && maintMeta.mileage != null) ? item.nextKm - maintMeta.mileage : null;
 
-        let ratioKm = null;
-        if (item.intervalKm && item.lastMileage != null && maintMeta.mileage != null) {
-          const kmLeft = (item.lastMileage + item.intervalKm) - maintMeta.mileage;
-          ratioKm = kmLeft / item.intervalKm;
-        }
-        const ratio = ratioKm != null ? Math.min(ratioDate, ratioKm) : ratioDate;
-        return ratio <= 0.15;
+        const overdue = (daysLeft !== null && daysLeft < 0) || (kmLeft !== null && kmLeft < 0);
+        const soon = !overdue && ((daysLeft !== null && daysLeft <= 14) || (kmLeft !== null && kmLeft <= 300));
+        return overdue || soon;
       }).length;
       showBadge('badgeMaintenance', dueSoonCount);
     } catch {}

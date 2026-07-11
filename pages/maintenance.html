@@ -46,26 +46,31 @@
         <input type="text" class="form-input" id="fName" placeholder="例：ワイパーゴム交換">
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">前回実施日 ＊</label>
-          <input type="date" class="form-input" id="fLastDate">
-        </div>
-        <div class="form-group">
-          <label class="form-label">頻度（月数）＊</label>
-          <input type="number" class="form-input" id="fIntervalMonths" min="1" placeholder="例：6">
+      <div class="form-group">
+        <label class="form-label">前回実施日（任意）</label>
+        <div style="display:flex;gap:6px">
+          <select class="form-select" id="fLastDateY" style="flex:1.2;min-width:0"></select>
+          <select class="form-select" id="fLastDateM" style="flex:1;min-width:0"></select>
+          <select class="form-select" id="fLastDateD" style="flex:1;min-width:0"></select>
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">目安走行距離(km)（任意）</label>
-          <input type="number" class="form-input" id="fIntervalKm" min="0" placeholder="例：5000">
+          <label class="form-label">次回予定日</label>
+          <div style="display:flex;gap:6px">
+            <select class="form-select" id="fNextDateY" style="flex:1.2;min-width:0"></select>
+            <select class="form-select" id="fNextDateM" style="flex:1;min-width:0"></select>
+            <select class="form-select" id="fNextDateD" style="flex:1;min-width:0"></select>
+          </div>
         </div>
         <div class="form-group">
-          <label class="form-label">前回実施時の走行距離(km)（任意）</label>
-          <input type="number" class="form-input" id="fLastMileage" min="0" placeholder="例：32000">
+          <label class="form-label">次回予定の走行距離(km)</label>
+          <input type="number" class="form-input" id="fNextKm" min="0" placeholder="例：35000">
         </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-sub, #888);margin:-8px 0 12px">
+        次回予定日・次回予定の走行距離は、どちらか一方または両方を入力してください
       </div>
 
       <div class="form-group">
@@ -89,25 +94,25 @@
     const META_KEY = 'life_maintenance_meta';
     let editingId  = null;
 
-    // 項目名 → 目安頻度のプリセット（一般的な軽自動車・バンの目安）
+    // 項目名の候補（一般的な軽自動車・バンでよくある整備項目）
     const PRESETS = [
-      { name: 'エンジンオイル交換',           months: 6,  km: 5000  },
-      { name: 'オイルエレメント交換',         months: 12, km: 10000 },
-      { name: '車検',                        months: 24, km: null  },
-      { name: 'ブレーキパッド点検・交換',     months: 12, km: 20000 },
-      { name: 'タイヤ点検・ローテーション',   months: 6,  km: 10000 },
-      { name: 'バッテリー交換',               months: 30, km: null  },
-      { name: 'ワイパーゴム交換',             months: 12, km: null  },
-      { name: 'エアコンフィルター交換',       months: 12, km: null  },
-      { name: 'その他（自由入力）',           months: null, km: null, custom: true }
+      'エンジンオイル交換',
+      'オイルエレメント交換',
+      '車検',
+      'ブレーキパッド点検・交換',
+      'タイヤ点検・ローテーション',
+      'バッテリー交換',
+      'ワイパーゴム交換',
+      'エアコンフィルター交換',
+      'その他（自由入力）'
     ];
 
     function initPresetSelect() {
       const sel = document.getElementById('fPreset');
-      PRESETS.forEach((p, i) => {
+      PRESETS.forEach((name, i) => {
         const opt = document.createElement('option');
         opt.value = i;
-        opt.textContent = p.name;
+        opt.textContent = name;
         sel.appendChild(opt);
       });
     }
@@ -116,15 +121,13 @@
       const idx = document.getElementById('fPreset').value;
       const customGroup = document.getElementById('customNameGroup');
       if (idx === '') { customGroup.classList.add('hidden'); return; }
-      const preset = PRESETS[idx];
-      if (preset.custom) {
+      const isCustom = Number(idx) === PRESETS.length - 1;
+      if (isCustom) {
         customGroup.classList.remove('hidden');
         document.getElementById('fName').value = '';
       } else {
         customGroup.classList.add('hidden');
-        document.getElementById('fName').value = preset.name;
-        if (preset.months != null) document.getElementById('fIntervalMonths').value = preset.months;
-        if (preset.km != null) document.getElementById('fIntervalKm').value = preset.km;
+        document.getElementById('fName').value = PRESETS[idx];
       }
     }
 
@@ -155,10 +158,68 @@
       el.textContent = meta.mileage != null ? `${meta.mileage.toLocaleString()} km` : '未設定';
     }
 
-    function addMonths(dateStr, months) {
-      const d = new Date(dateStr + 'T00:00:00');
-      d.setMonth(d.getMonth() + Number(months));
-      return d.toISOString().slice(0, 10);
+    // 年→月→日のセレクトで日付を入力する（選ぶと自動的に次のセレクトへフォーカス移動）
+    function daysInMonth(year, month) {
+      return new Date(year, month, 0).getDate();
+    }
+
+    function buildDateSelect(prefix) {
+      const ySel = document.getElementById(prefix + 'Y');
+      const mSel = document.getElementById(prefix + 'M');
+      const dSel = document.getElementById(prefix + 'D');
+      const thisYear = new Date().getFullYear();
+
+      let yHtml = '<option value="">年</option>';
+      for (let y = thisYear - 5; y <= thisYear + 6; y++) yHtml += `<option value="${y}">${y}年</option>`;
+      ySel.innerHTML = yHtml;
+
+      let mHtml = '<option value="">月</option>';
+      for (let m = 1; m <= 12; m++) mHtml += `<option value="${m}">${m}月</option>`;
+      mSel.innerHTML = mHtml;
+
+      updateDayOptions(prefix);
+
+      ySel.addEventListener('change', () => { updateDayOptions(prefix); mSel.focus(); });
+      mSel.addEventListener('change', () => { updateDayOptions(prefix); dSel.focus(); });
+    }
+
+    function updateDayOptions(prefix) {
+      const ySel = document.getElementById(prefix + 'Y');
+      const mSel = document.getElementById(prefix + 'M');
+      const dSel = document.getElementById(prefix + 'D');
+      const prevDay = dSel.value;
+      const maxDay = (ySel.value && mSel.value) ? daysInMonth(parseInt(ySel.value), parseInt(mSel.value)) : 31;
+
+      let dHtml = '<option value="">日</option>';
+      for (let d = 1; d <= maxDay; d++) dHtml += `<option value="${d}">${d}日</option>`;
+      dSel.innerHTML = dHtml;
+      if (prevDay && parseInt(prevDay) <= maxDay) dSel.value = prevDay;
+    }
+
+    function getDateValue(prefix) {
+      const y = document.getElementById(prefix + 'Y').value;
+      const m = document.getElementById(prefix + 'M').value;
+      const d = document.getElementById(prefix + 'D').value;
+      if (!y || !m || !d) return '';
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+
+    function setDateValue(prefix, dateStr) {
+      const ySel = document.getElementById(prefix + 'Y');
+      const mSel = document.getElementById(prefix + 'M');
+      const dSel = document.getElementById(prefix + 'D');
+      if (!dateStr) {
+        ySel.value = '';
+        mSel.value = '';
+        updateDayOptions(prefix);
+        dSel.value = '';
+        return;
+      }
+      const [y, m, d] = dateStr.split('-');
+      ySel.value = String(parseInt(y));
+      mSel.value = String(parseInt(m));
+      updateDayOptions(prefix);
+      dSel.value = String(parseInt(d));
     }
 
     function daysBetween(fromStr, toStr) {
@@ -167,29 +228,22 @@
       return Math.round((b - a) / 86400000);
     }
 
-    // 整備1件の状態（期限日・残り日数・残りkm・緊急度比率）を計算
+    // 整備1件の状態（残り日数・残りkm・緊急度）を計算
     function computeStatus(item) {
       const todayStr = today();
-      const nextDate = addMonths(item.lastDate, item.intervalMonths);
-      const daysLeft = daysBetween(todayStr, nextDate);
-      const totalDays = item.intervalMonths * 30;
-      const ratioDate = daysLeft / totalDays;
-
-      let ratioKm = null, kmLeft = null;
       const meta = getMeta();
-      if (item.intervalKm && item.lastMileage != null && meta.mileage != null) {
-        const dueMileage = item.lastMileage + item.intervalKm;
-        kmLeft = dueMileage - meta.mileage;
-        ratioKm = kmLeft / item.intervalKm;
-      }
 
-      const ratio = ratioKm != null ? Math.min(ratioDate, ratioKm) : ratioDate;
+      const daysLeft = item.nextDate ? daysBetween(todayStr, item.nextDate) : null;
+      const kmLeft = (item.nextKm != null && meta.mileage != null) ? item.nextKm - meta.mileage : null;
+
+      const overdue = (daysLeft !== null && daysLeft < 0) || (kmLeft !== null && kmLeft < 0);
+      const soon = !overdue && ((daysLeft !== null && daysLeft <= 14) || (kmLeft !== null && kmLeft <= 300));
 
       let level = 'ok';
-      if (ratio <= 0) level = 'overdue';
-      else if (ratio <= 0.15) level = 'soon';
+      if (overdue) level = 'overdue';
+      else if (soon) level = 'soon';
 
-      return { nextDate, daysLeft, kmLeft, ratio, level };
+      return { daysLeft, kmLeft, level };
     }
 
     function openModal(id) {
@@ -202,21 +256,19 @@
         const item = Storage.get(KEY).find(i => i.id === id);
         if (item) {
           document.getElementById('fPreset').value = '';
-          document.getElementById('fName').value          = item.name || '';
-          document.getElementById('fLastDate').value       = item.lastDate || today();
-          document.getElementById('fIntervalMonths').value = item.intervalMonths || '';
-          document.getElementById('fIntervalKm').value     = item.intervalKm || '';
-          document.getElementById('fLastMileage').value    = item.lastMileage != null ? item.lastMileage : '';
-          document.getElementById('fNotes').value          = item.notes || '';
+          document.getElementById('fName').value    = item.name || '';
+          setDateValue('fLastDate', item.lastDate || '');
+          setDateValue('fNextDate', item.nextDate || '');
+          document.getElementById('fNextKm').value    = item.nextKm != null ? item.nextKm : '';
+          document.getElementById('fNotes').value     = item.notes || '';
           document.getElementById('customNameGroup').classList.remove('hidden');
         }
       } else {
         document.getElementById('fPreset').value = '';
         document.getElementById('fName').value = '';
-        document.getElementById('fLastDate').value = today();
-        document.getElementById('fIntervalMonths').value = '';
-        document.getElementById('fIntervalKm').value = '';
-        document.getElementById('fLastMileage').value = '';
+        setDateValue('fLastDate', '');
+        setDateValue('fNextDate', '');
+        document.getElementById('fNextKm').value = '';
         document.getElementById('fNotes').value = '';
       }
     }
@@ -232,22 +284,21 @@
 
     function saveItem() {
       const name = document.getElementById('fName').value.trim();
-      const lastDate = document.getElementById('fLastDate').value;
-      const intervalMonths = parseInt(document.getElementById('fIntervalMonths').value);
+      const lastDate = getDateValue('fLastDate');
+      const nextDate = getDateValue('fNextDate');
+      const nextKmVal = document.getElementById('fNextKm').value;
 
       if (!name) { alert('項目名を入力してください'); return; }
-      if (!lastDate) { alert('前回実施日を入力してください'); return; }
-      if (!intervalMonths || intervalMonths < 1) { alert('頻度（月数）を正しく入力してください'); return; }
-
-      const intervalKmVal = document.getElementById('fIntervalKm').value;
-      const lastMileageVal = document.getElementById('fLastMileage').value;
+      if (!nextDate && nextKmVal === '') {
+        alert('次回予定日または次回予定の走行距離のどちらかを入力してください');
+        return;
+      }
 
       const data = {
         name,
-        lastDate,
-        intervalMonths,
-        intervalKm:  intervalKmVal  !== '' ? parseInt(intervalKmVal)  : null,
-        lastMileage: lastMileageVal !== '' ? parseInt(lastMileageVal) : null,
+        lastDate: lastDate || '',
+        nextDate: nextDate || '',
+        nextKm: nextKmVal !== '' ? parseInt(nextKmVal) : null,
         notes: document.getElementById('fNotes').value.trim()
       };
 
@@ -266,20 +317,6 @@
       if (!confirmDelete('この整備項目を削除しますか？')) return;
       Storage.remove(KEY, id);
       showToast('削除しました');
-      render();
-    }
-
-    // 実施済みにする：基準日・基準走行距離を今日/現在値にリセット（次回サイクルへ）
-    function markDone(id) {
-      const item = Storage.get(KEY).find(i => i.id === id);
-      if (!item) return;
-      const meta = getMeta();
-      const updates = { lastDate: today() };
-      if (item.intervalKm != null && meta.mileage != null) {
-        updates.lastMileage = meta.mileage;
-      }
-      Storage.update(KEY, id, updates);
-      showToast('実施済みにしました ✓');
       render();
     }
 
@@ -303,18 +340,32 @@
         return;
       }
 
-      // 緊急度（期限までの割合が小さい＝対応が必要なもの）が高い順に並べる
+      // 緊急度（期限切れ→まもなく→余裕あり）の順に並べ、同じ緊急度の中では日数・距離が近い順に並べる
       const withStatus = items.map(item => ({ item, status: computeStatus(item) }));
-      withStatus.sort((a, b) => a.status.ratio - b.status.ratio);
+      const levelOrder = { overdue: 0, soon: 1, ok: 2 };
+      withStatus.sort((a, b) => {
+        if (levelOrder[a.status.level] !== levelOrder[b.status.level]) {
+          return levelOrder[a.status.level] - levelOrder[b.status.level];
+        }
+        const aDays = a.status.daysLeft, bDays = b.status.daysLeft;
+        if (aDays !== null && bDays !== null) return aDays - bDays;
+        if (aDays !== null) return -1;
+        if (bDays !== null) return 1;
+        const aKm = a.status.kmLeft, bKm = b.status.kmLeft;
+        if (aKm !== null && bKm !== null) return aKm - bKm;
+        if (aKm !== null) return -1;
+        if (bKm !== null) return 1;
+        return 0;
+      });
 
       let html = '<div class="card">';
       withStatus.forEach(({ item, status }) => {
-        const kmInfo = (item.intervalKm != null)
-          ? ` ／ 目安${item.intervalKm.toLocaleString()}km${status.kmLeft != null ? `（残り${status.kmLeft.toLocaleString()}km）` : ''}`
+        const dateInfo = item.nextDate
+          ? `次回予定日: ${formatDate(item.nextDate)}${status.daysLeft >= 0 ? `（あと${status.daysLeft}日）` : `（${Math.abs(status.daysLeft)}日超過）`}`
           : '';
-        const dateInfo = status.daysLeft >= 0
-          ? `次回目安: ${formatDate(status.nextDate)}（あと${status.daysLeft}日）`
-          : `次回目安: ${formatDate(status.nextDate)}（${Math.abs(status.daysLeft)}日超過）`;
+        const kmInfo = item.nextKm != null
+          ? `次回予定: ${item.nextKm.toLocaleString()}km${status.kmLeft != null ? `（残り${status.kmLeft.toLocaleString()}km）` : ''}`
+          : '';
 
         html += `
           <div class="list-item" style="background:${status.level === 'overdue' ? 'var(--danger-light)' : status.level === 'soon' ? 'var(--warning-light)' : ''}">
@@ -323,16 +374,14 @@
                 <span class="list-item-title">${esc(item.name)}</span>
                 ${levelBadge(status.level)}
               </div>
-              <div class="list-item-sub">前回: ${formatDate(item.lastDate)} ／ ${item.intervalMonths}ヶ月${kmInfo}</div>
-              <div class="list-item-sub">${dateInfo}</div>
+              ${item.lastDate ? `<div class="list-item-sub">前回: ${formatDate(item.lastDate)}</div>` : ''}
+              ${dateInfo ? `<div class="list-item-sub">${dateInfo}</div>` : ''}
+              ${kmInfo ? `<div class="list-item-sub">${kmInfo}</div>` : ''}
               ${item.notes ? `<div class="list-item-sub">${esc(item.notes)}</div>` : ''}
             </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
-              <button class="btn btn-sm btn-primary" onclick="markDone('${item.id}')">✅ 実施済み</button>
-              <div style="display:flex;gap:4px;align-items:center">
-                <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
-                <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
-              </div>
+            <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+              <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+              <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
             </div>
           </div>`;
       });
@@ -342,6 +391,8 @@
     }
 
     initPresetSelect();
+    buildDateSelect('fLastDate');
+    buildDateSelect('fNextDate');
     renderMileage();
     render();
   </script>
