@@ -426,10 +426,11 @@
   <script src="../js/storage.js"></script>
   <script src="../js/common.js"></script>
   <script src="../js/google-calendar.js"></script>
+  <script src="../js/sync.js"></script>
   <script async defer src="https://apis.google.com/js/api.js"
           onload="GCal.gapiLoaded()"></script>
   <script async defer src="https://accounts.google.com/gsi/client"
-          onload="GCal.gisLoaded()"></script>
+          onload="GCal.gisLoaded(); Sync.gisLoaded();"></script>
   <script>
     const KEY = 'life_timebox';
 
