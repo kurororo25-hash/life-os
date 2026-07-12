@@ -620,32 +620,45 @@
     }
 
     function saveItem() {
-      const title = document.getElementById('fTitle').value.trim();
-      if (!title) { alert('やることを入力してください'); return; }
+      const rawTitle = document.getElementById('fTitle').value.trim();
+      if (!rawTitle) { alert('やることを入力してください'); return; }
       const startTime = document.getElementById('fStart').value;
       const endTime = minToTime(timeToMin(startTime) + SLOT_MIN);
-
-      const data = {
-        date: modalDate,
-        title,
-        startTime,
-        endTime,
-        done: editingId ? modalDoneState : false,
-      };
-
-      let saved;
       const wasAdding = !editingId;
+
+      // 新規追加時のみ：スペース区切りで複数入力したら、それぞれ独立した予定として保存する
+      // 例：「歯磨き 光浴 筋トレ」→ 3件の予定として保存し、それぞれ個別にGoogleカレンダーへ同期
+      const titles = wasAdding
+        ? rawTitle.split(/[\s　]+/).filter(Boolean)
+        : [rawTitle];
+
+      const savedItems = [];
       if (editingId) {
-        saved = Storage.update(KEY, editingId, data);
+        const saved = Storage.update(KEY, editingId, {
+          date: modalDate,
+          title: titles[0],
+          startTime,
+          endTime,
+          done: modalDoneState,
+        });
+        savedItems.push(saved);
         showToast('更新しました ✓');
       } else {
-        saved = Storage.add(KEY, data);
-        showToast('追加しました ✓');
+        titles.forEach(title => {
+          savedItems.push(Storage.add(KEY, {
+            date: modalDate,
+            title,
+            startTime,
+            endTime,
+            done: false,
+          }));
+        });
+        showToast(titles.length > 1 ? `${titles.length}件追加しました ✓` : '追加しました ✓');
       }
       render();
 
-      if (GCal.isSignedIn() && saved && saved.date) {
-        GCal.syncTimeboxItem(saved);
+      if (GCal.isSignedIn()) {
+        GCal.syncTimeboxItems(savedItems);
       }
 
       if (wasAdding) {

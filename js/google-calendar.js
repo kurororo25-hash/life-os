@@ -303,7 +303,7 @@ const GCal = (() => {
     };
   }
 
-  async function syncTimeboxItem(item) {
+  async function syncTimeboxItem(item, silent) {
     if (!accessToken || !item.date) return;
     try {
       const { start, end } = _buildStartEndRange(item.date, item.startTime, item.endTime);
@@ -316,9 +316,22 @@ const GCal = (() => {
         }
       });
       Storage.update('life_timebox', item.id, { gcalEventId: res.result.id });
-      showToast('Googleカレンダーにも追加しました 📅');
+      if (!silent) showToast('Googleカレンダーにも追加しました 📅');
     } catch (e) {
       console.warn('[GCal] syncTimeboxItem failed:', e);
+    }
+  }
+
+  async function syncTimeboxItems(items) {
+    if (!accessToken) return;
+    const targets = items.filter(item => item && item.date);
+    for (const item of targets) {
+      await syncTimeboxItem(item, true);
+    }
+    if (targets.length > 1) {
+      showToast(`${targets.length}件をGoogleカレンダーにも追加しました 📅`);
+    } else if (targets.length === 1) {
+      showToast('Googleカレンダーにも追加しました 📅');
     }
   }
 
@@ -352,5 +365,5 @@ const GCal = (() => {
   /* --------------------------------------------------
    * 公開API
    * -------------------------------------------------- */
-  return { gapiLoaded, gisLoaded, signIn, signOut, isSignedIn, openSetup, closeSetup, saveClientId, renderGCalEvents, syncAll, syncReminder, syncTimeboxItem, syncAllTimebox };
+  return { gapiLoaded, gisLoaded, signIn, signOut, isSignedIn, openSetup, closeSetup, saveClientId, renderGCalEvents, syncAll, syncReminder, syncTimeboxItem, syncTimeboxItems, syncAllTimebox };
 })();
