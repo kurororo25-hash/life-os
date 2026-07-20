@@ -4,6 +4,9 @@
  */
 
 const Notif = {
+  COOLDOWN_MS: 5 * 60 * 1000,
+  LAST_SHOWN_KEY: 'notif_last_shown_at',
+
   // 起動時に呼ぶ
   async init() {
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
@@ -41,6 +44,12 @@ const Notif = {
   async checkReminders() {
     if (Notification.permission !== 'granted') return;
 
+    // 前回通知してからクールダウン中なら何もしない
+    // （他ページからホーム画面に戻るたびに毎回 init() → checkReminders() が
+    //   呼ばれるため、間隔を空けないと戻るたびに通知が鳴ってしまう）
+    const lastShown = Number(localStorage.getItem(this.LAST_SHOWN_KEY) || 0);
+    if (Date.now() - lastShown < this.COOLDOWN_MS) return;
+
     const now     = new Date();
     const today   = now.toISOString().slice(0, 10);
     const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -54,6 +63,8 @@ const Notif = {
     const overdue = all.filter(r =>
       !r.done && r.date && r.date < today
     );
+
+    if (dueToday.length === 0 && overdue.length === 0) return;
 
     const reg = await navigator.serviceWorker.ready;
 
@@ -74,6 +85,8 @@ const Notif = {
         renotify: false
       });
     }
+
+    localStorage.setItem(this.LAST_SHOWN_KEY, String(Date.now()));
   },
 
   _showBanner() {

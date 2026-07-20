@@ -22,6 +22,7 @@ const Sync = (() => {
   const SCOPES       = 'https://www.googleapis.com/auth/drive.appdata';
   const FILE_NAME    = 'lifeos-data.json';
   const TOKEN_KEY    = 'sync_token';
+  const EXPIRY_KEY   = 'sync_token_expiry';
   const FILE_ID_KEY  = 'sync_file_id';
   const LOCAL_TS_KEY = 'sync_local_updated_at';
   const LAST_KEY     = 'sync_last_synced_at';
@@ -32,6 +33,7 @@ const Sync = (() => {
   let pushTimer    = null;
   let suppress     = false;
   let pulledOnLoad = false;
+  let silentRefreshTried = false;
 
   /* --------------------------------------------------
    * localStorage の書き込みをフックして自動push予約
@@ -62,9 +64,17 @@ const Sync = (() => {
       client_id: CLIENT_ID,
       scope: SCOPES,
       callback: async (resp) => {
-        if (resp.error) { console.warn('[Sync] token error:', resp); _updateUI(); return; }
+        if (resp.error) {
+          console.warn('[Sync] token error:', resp);
+          accessToken = null;
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(EXPIRY_KEY);
+          _updateUI();
+          return;
+        }
         accessToken = resp.access_token;
         rawSetItem(TOKEN_KEY, accessToken);
+        rawSetItem(EXPIRY_KEY, String(Date.now() + (Number(resp.expires_in) || 3600) * 1000));
         _updateUI();
         try {
           await pullIfNewer();
@@ -79,7 +89,15 @@ const Sync = (() => {
     const saved = localStorage.getItem(TOKEN_KEY);
     if (saved) {
       accessToken = saved;
-      _autoPullOnLoad();
+      // 期限切れ間近ならバックグラウンド再認証（成功後のcallbackがpullまで行う）。
+      // まだ有効そうならそのままpullする。
+      const expiry = Number(localStorage.getItem(EXPIRY_KEY) || 0);
+      if (Date.now() >= expiry - 5 * 60 * 1000) {
+        silentRefreshTried = true;
+        tokenClient.requestAccessToken({ prompt: '' });
+      } else {
+        _autoPullOnLoad();
+      }
     }
     _updateUI();
   }
@@ -91,8 +109,15 @@ const Sync = (() => {
       await pullIfNewer();
     } catch (e) {
       if (e && e.status === 401) {
-        accessToken = null;
-        localStorage.removeItem(TOKEN_KEY);
+        if (tokenClient && !silentRefreshTried) {
+          // 期限切れ検知 → 一度だけバックグラウンド再認証（成功すればcallback内でpullし直す）
+          silentRefreshTried = true;
+          tokenClient.requestAccessToken({ prompt: '' });
+        } else {
+          accessToken = null;
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(EXPIRY_KEY);
+        }
       } else {
         console.warn('[Sync] auto pull failed:', e);
       }
@@ -115,6 +140,7 @@ const Sync = (() => {
     if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = null;
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(EXPIRY_KEY);
     _updateUI();
   }
 

@@ -17,11 +17,13 @@ const GCal = (() => {
   const HARDCODED_CLIENT_ID = '306443567956-en4g26uhd8s8lpme7r0d9ha37aqehm9o.apps.googleusercontent.com';
   const STORAGE_KEY = 'gcal_client_id';
   const TOKEN_KEY   = 'gcal_token';
+  const EXPIRY_KEY  = 'gcal_token_expiry';
 
   let gapiReady   = false;
   let gisReady    = false;
   let tokenClient = null;
   let accessToken = null;
+  let silentRefreshTried = false;
 
   /* --------------------------------------------------
    * 初期化
@@ -49,6 +51,7 @@ const GCal = (() => {
     if (!clientId) { _updateUI(); return; }
     _initTokenClient(clientId);
     _updateUI();
+    _maybeSilentRefresh();
   }
 
   function _initTokenClient(clientId) {
@@ -56,10 +59,18 @@ const GCal = (() => {
       client_id: clientId,
       scope: SCOPES,
       callback: (resp) => {
-        if (resp.error) { console.warn('[GCal] token error:', resp); return; }
+        if (resp.error) {
+          console.warn('[GCal] token error:', resp);
+          accessToken = null;
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(EXPIRY_KEY);
+          _updateUI();
+          return;
+        }
         accessToken = resp.access_token;
         gapi.client.setToken({ access_token: accessToken });
         localStorage.setItem(TOKEN_KEY, accessToken);
+        localStorage.setItem(EXPIRY_KEY, String(Date.now() + (Number(resp.expires_in) || 3600) * 1000));
         _updateUI();
         renderGCalEvents();
       }
@@ -72,6 +83,18 @@ const GCal = (() => {
       accessToken = saved;
       gapi.client.setToken({ access_token: saved });
     }
+    _maybeSilentRefresh();
+  }
+
+  // トークンの有効期限が近い（or 過ぎている）場合、ポップアップを出さずに
+  // バックグラウンドで再認証する。ページを開くたびに1回だけ試みる。
+  function _maybeSilentRefresh() {
+    if (!gapiReady || !gisReady || !tokenClient || !accessToken) return;
+    if (silentRefreshTried) return;
+    const expiry = Number(localStorage.getItem(EXPIRY_KEY) || 0);
+    if (Date.now() < expiry - 5 * 60 * 1000) return;
+    silentRefreshTried = true;
+    tokenClient.requestAccessToken({ prompt: '' });
   }
 
   /* --------------------------------------------------
@@ -92,6 +115,7 @@ const GCal = (() => {
     if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = null;
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(EXPIRY_KEY);
     if (gapi.client) gapi.client.setToken(null);
     _updateUI();
     const panel = document.getElementById('gcalEventsPanel');
@@ -177,9 +201,16 @@ const GCal = (() => {
       }).join('');
     } catch (e) {
       console.warn('[GCal] fetch error:', e);
+      if (e.status === 401 && tokenClient && !silentRefreshTried) {
+        // 期限切れ検知 → 一度だけバックグラウンド再認証してから再試行
+        silentRefreshTried = true;
+        tokenClient.requestAccessToken({ prompt: '' });
+        return;
+      }
       if (e.status === 401) {
         accessToken = null;
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(EXPIRY_KEY);
         _updateUI();
         panel.innerHTML = '<div style="text-align:center;padding:12px;color:var(--danger);font-size:13px">セッションが切れました。再度ログインしてください。</div>';
       } else {
