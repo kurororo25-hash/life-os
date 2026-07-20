@@ -60,44 +60,10 @@
       <span class="card-label">タイムボクシング</span>
       <span class="card-badge" id="badgeTimebox"></span>
     </a>
-    <a href="pages/inventory.html" class="feature-card">
-      <span class="card-icon">📦</span>
-      <span class="card-label">在庫管理</span>
-      <span class="card-badge" id="badgeInventory"></span>
-    </a>
-    <a href="pages/shopping.html" class="feature-card">
-      <span class="card-icon">🛒</span>
-      <span class="card-label">買い物リスト</span>
-      <span class="card-badge" id="badgeShopping"></span>
-    </a>
-    <a href="pages/cargo.html" class="feature-card">
-      <span class="card-icon">🚐</span>
-      <span class="card-label">車内荷物</span>
-    </a>
     <a href="pages/maintenance.html" class="feature-card">
       <span class="card-icon">🔧</span>
       <span class="card-label">整備管理</span>
       <span class="card-badge" id="badgeMaintenance"></span>
-    </a>
-    <a href="pages/memo-work.html" class="feature-card">
-      <span class="card-icon">💼</span>
-      <span class="card-label">仕事メモ</span>
-    </a>
-    <a href="pages/memo-study.html" class="feature-card">
-      <span class="card-icon">📚</span>
-      <span class="card-label">学習メモ</span>
-    </a>
-    <a href="pages/memo-health.html" class="feature-card">
-      <span class="card-icon">❤️</span>
-      <span class="card-label">健康メモ</span>
-    </a>
-    <a href="pages/memo-training.html" class="feature-card">
-      <span class="card-icon">💪</span>
-      <span class="card-label">トレーニング</span>
-    </a>
-    <a href="pages/diary.html" class="feature-card">
-      <span class="card-icon">📓</span>
-      <span class="card-label">日記・ログ</span>
     </a>
     <a href="pages/habit.html" class="feature-card">
       <span class="card-icon">✅</span>
@@ -137,20 +103,10 @@
     const pendingReminders = reminders.filter(r => !r.done && r.date && r.date <= todayStr);
     showBadge('badgeReminder', pendingReminders.length);
 
-    // 在庫：最低在庫数以下の件数
-    const inventory = Storage.get('life_inventory');
-    const lowStock = inventory.filter(i => (i.currentCount || 0) <= (i.minCount || 0) && i.minCount > 0);
-    showBadge('badgeInventory', lowStock.length);
-
     // タイムボクシング：今日の未完了件数
     const timebox = Storage.get('life_timebox');
     const pendingTimebox = timebox.filter(t => !t.done && t.date === todayStr);
     showBadge('badgeTimebox', pendingTimebox.length);
-
-    // 買い物リスト：未購入件数
-    const shopping = Storage.get('life_shopping');
-    const pendingShopping = shopping.filter(s => !s.bought);
-    showBadge('badgeShopping', pendingShopping.length);
 
     // 整備管理：期限切れ・まもなく の件数
     try {

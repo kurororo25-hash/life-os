@@ -7,17 +7,9 @@
 | アイコン | 機能 | ファイル |
 |---------|------|---------|
 | ⏰ | リマインダー | pages/reminder.html |
-| 📦 | 在庫管理 | pages/inventory.html |
-| 🛒 | 買い物リスト | pages/shopping.html |
 | 🔌 | 家電メモ | pages/appliance.html |
 | 🧹 | 掃除手順 | pages/cleaning.html |
 | 👕 | 洗濯手順 | pages/laundry.html |
-| 🚐 | 車内荷物管理 | pages/cargo.html |
-| 💼 | 仕事メモ | pages/memo-work.html |
-| 📚 | 学習メモ | pages/memo-study.html |
-| ❤️ | 健康メモ | pages/memo-health.html |
-| 💪 | トレーニングメモ | pages/memo-training.html |
-| 📓 | 日記・ログ | pages/diary.html |
 
 ## 技術仕様
 
