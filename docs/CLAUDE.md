@@ -35,6 +35,7 @@ life-os/
 │   └── common.js       全ページ共通ユーティリティ（toast・日付・削除確認など）
 ├── pages/
 │   ├── timebox.html    タイムボクシング
+│   ├── lifelog.html    ライフログ（一日の振り返り）
 │   ├── reminder.html   リマインダー
 │   ├── appliance.html  家電メモ
 │   ├── cleaning.html   掃除手順
@@ -49,6 +50,7 @@ life-os/
 | キー名 | 使用ページ | 主な項目 |
 |--------|-----------|---------|
 | `life_timebox`       | timebox.html    | date, title, startTime, endTime（30分固定）, done, gcalEventId |
+| `life_lifelog`       | lifelog.html    | date, title, startTime, endTime（自由な長さ）, mood, notes |
 | `life_reminders`     | reminder.html   | title, date, repeat, priority, done, notes |
 | `life_appliances`    | appliance.html  | name, maker, model, location, purchase, warranty, price, notes |
 | `life_cleaning`      | cleaning.html   | title, freq, time, steps[], tools, notes |
@@ -83,6 +85,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-07-20 | ライフログ（lifelog.html）を追加。タイムボクシングと同じ縦タイムラインUIで、一日の振り返り用に開始〜終了時刻・気分・メモを記録できる。保存後に続けて次の枠を入力できる仕組みも実装 |
 | 2026-07-20 | 在庫管理・買い物リスト・車内荷物・仕事メモ・学習メモ・健康メモ・トレーニングメモ・日記ログを削除（memo-base.js も削除） |
 | 2026-07-12 | タイムボクシング（timebox.html）を追加。日単位の視覚的タイムライン＋予定リスト |
 | 2026-06-29 | 初期作成。全12機能ページ＋共通CSS/JS を構築 |

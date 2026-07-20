@@ -7,6 +7,7 @@
 | アイコン | 機能 | ファイル |
 |---------|------|---------|
 | ⏰ | リマインダー | pages/reminder.html |
+| 📔 | ライフログ | pages/lifelog.html |
 | 🔌 | 家電メモ | pages/appliance.html |
 | 🧹 | 掃除手順 | pages/cleaning.html |
 | 👕 | 洗濯手順 | pages/laundry.html |

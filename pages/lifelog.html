@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ライフログ | 生活OS</title>
+  <link rel="manifest" href="../manifest.json">
+  <link rel="stylesheet" href="../css/style.css">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    /* 日付ナビ */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 8px;
+      gap: 4px;
+    }
+    .date-nav-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: none;
+      background: none;
+      color: var(--primary);
+      font-size: 18px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .date-nav-label {
+      flex: 1;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 8px 4px;
+      border-radius: var(--radius-sm);
+    }
+    .date-nav-label:active { background: var(--bg); }
+    .date-nav-today-tag {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 700;
+      margin-left: 4px;
+    }
+    .date-nav-today-btn {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-light);
+      border: none;
+      border-radius: 99px;
+      padding: 7px 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    /* サマリー */
+    .tb-summary {
+      display: flex;
+      gap: 14px;
+      padding: 10px 16px;
+      font-size: 12px;
+      color: var(--text-sub);
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+    .tb-summary b { color: var(--text); font-size: 13px; }
+
+    /* ---------- 1日タイムライン ---------- */
+    .tl-outer {
+      background: var(--card);
+      border-bottom: 8px solid var(--bg);
+    }
+    .tl-scroll {
+      position: relative;
+    }
+    .tl-container {
+      display: flex;
+      position: relative;
+    }
+    .tl-hourcol {
+      width: 40px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .tl-hour-label {
+      position: absolute;
+      right: 6px;
+      transform: translateY(-50%);
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .tl-body {
+      flex: 1;
+      position: relative;
+      border-left: 1px solid var(--border);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tl-hourline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      border-top: 1px solid var(--border);
+      pointer-events: none;
+    }
+    .tl-hourline.half {
+      border-top: 1px dashed #eef1f6;
+    }
+    .tl-now-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 0;
+      border-top: 2px solid var(--danger);
+      pointer-events: none;
+      z-index: 5;
+    }
+    .tl-now-line::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      top: -4px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+    .tl-block {
+      position: absolute;
+      border-radius: 6px;
+      border-left: 4px solid var(--success);
+      background: var(--success-light);
+      padding: 0 7px;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      -webkit-tap-highlight-color: transparent;
+      display: flex;
+      align-items: center;
+    }
+    .tl-block-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tl-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 8px 0 2px;
+    }
+
+    /* ---------- リスト ---------- */
+    .ll-list-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ll-list-item:last-child { border-bottom: none; }
+    .ll-mood {
+      font-size: 20px;
+      flex-shrink: 0;
+      line-height: 1.3;
+    }
+    .ll-notes {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 3px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ---------- 気分ピッカー ---------- */
+    .mood-picker {
+      display: flex;
+      gap: 8px;
+    }
+    .mood-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 10px 4px;
+      border-radius: var(--radius-sm);
+      border: 2px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+      font-size: 22px;
+    }
+    .mood-btn .mood-label { font-size: 10px; color: var(--text-muted); }
+    .mood-btn.selected { border-color: var(--primary); background: var(--primary-light); }
+
+    .modal-date-label {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin: -10px 0 16px;
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="location.href='../index.html'">◀ ホーム</button>
+    <h1>📔 ライフログ</h1>
+  </header>
+
+  <div class="date-nav">
+    <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
+    <div class="date-nav-label" id="dateLabel" onclick="openDatePicker()"></div>
+    <button class="date-nav-btn" onclick="changeDate(1)">›</button>
+    <button class="date-nav-today-btn" onclick="goToday()">今日</button>
+    <input type="date" id="datePickerInput" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
+  </div>
+
+  <div class="tb-summary" id="tbSummary"></div>
+
+  <div class="tl-outer" id="dayTimelineWrap">
+    <div class="tl-scroll" id="tlScroll">
+      <div class="tl-container" id="tlContainer" style="height:0">
+        <div class="tl-hourcol" id="tlHourCol"></div>
+        <div class="tl-body" id="tlBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tl-hint">空いている場所をタップして記録を追加できます</div>
+
+  <main class="page-main" style="padding-top:14px">
+    <div class="section-title">📋 この日の記録</div>
+    <div id="listContainer"></div>
+  </main>
+
+  <button class="fab" onclick="openModal()">＋</button>
+
+  <!-- 追加・編集モーダル -->
+  <div class="modal-overlay hidden" id="modalOverlay" onclick="overlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="modalTitle">記録を追加</span>
+        <button class="btn-icon" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-date-label" id="modalDateLabel"></div>
+
+      <div class="form-group">
+        <label class="form-label">やったこと ＊</label>
+        <input type="text" class="form-input" id="fTitle" placeholder="例：資料作成、散歩、昼寝">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">時間帯</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select class="form-select" id="fStart" style="flex:1"></select>
+          <span style="color:var(--text-muted)">〜</span>
+          <select class="form-select" id="fEnd" style="flex:1"></select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">気分（任意）</label>
+        <div class="mood-picker" id="moodPicker">
+          <button type="button" class="mood-btn" data-mood="great" onclick="selectMood('great')">😄<span class="mood-label">最高</span></button>
+          <button type="button" class="mood-btn" data-mood="good" onclick="selectMood('good')">🙂<span class="mood-label">よかった</span></button>
+          <button type="button" class="mood-btn" data-mood="neutral" onclick="selectMood('neutral')">😐<span class="mood-label">ふつう</span></button>
+          <button type="button" class="mood-btn" data-mood="bad" onclick="selectMood('bad')">😔<span class="mood-label">つらい</span></button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">メモ（任意）</label>
+        <textarea class="form-textarea" id="fNotes" style="min-height:80px" placeholder="気づいたこと・感想など"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modalCancelBtn" onclick="closeModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveItem()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const KEY = 'life_lifelog';
+
+    const BASE_HOUR  = 2;   // タイムライン開始
+    const END_HOUR   = 24;  // タイムライン終了（24:00 = 翌0:00）
+    const SLOT_MIN   = 30;  // 時刻選択の刻み幅
+    const PX_PER_MIN = 0.6;
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function dateStr(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+    function todayStr() { return dateStr(new Date()); }
+    function parseDate(s) { return new Date(s + 'T00:00:00'); }
+    function timeToMin(t) { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; }
+    function minToTime(min) {
+      return `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
+    }
+    function dowLabel(d) { return '日月火水木金土'[d.getDay()]; }
+    function moodIcon(mood) { return { great: '😄', good: '🙂', neutral: '😐', bad: '😔' }[mood] || ''; }
+
+    let currentDate = todayStr();
+    let editingId = null;
+    let modalDate = currentDate;
+    let modalMood = '';
+    let nowTimer = null;
+
+    /* ---------- 日付ナビ ---------- */
+    function renderDateLabel() {
+      const label = document.getElementById('dateLabel');
+      const d = parseDate(currentDate);
+      const isToday = currentDate === todayStr();
+      label.innerHTML = `${d.getMonth() + 1}月${d.getDate()}日（${dowLabel(d)}）` +
+        (isToday ? '<span class="date-nav-today-tag">今日</span>' : '');
+    }
+
+    function changeDate(delta) {
+      const d = parseDate(currentDate);
+      d.setDate(d.getDate() + delta);
+      currentDate = dateStr(d);
+      render();
+    }
+
+    function goToday() {
+      currentDate = todayStr();
+      render();
+    }
+
+    function openDatePicker() {
+      const input = document.getElementById('datePickerInput');
+      input.value = currentDate;
+      input.onchange = () => {
+        if (input.value) { currentDate = input.value; render(); }
+      };
+      input.showPicker ? input.showPicker() : input.click();
+    }
+
+    /* ---------- 時刻セレクト ---------- */
+    function buildTimeSelects() {
+      let html = '';
+      for (let min = BASE_HOUR * 60; min <= END_HOUR * 60; min += SLOT_MIN) {
+        const t = minToTime(min);
+        html += `<option value="${min}">${t}</option>`;
+      }
+      document.getElementById('fStart').innerHTML = html;
+      document.getElementById('fEnd').innerHTML = html;
+    }
+
+    function nowMinutes() {
+      const n = new Date();
+      return n.getHours() * 60 + n.getMinutes();
+    }
+    function snapToSlot(min) {
+      min = Math.round(min / SLOT_MIN) * SLOT_MIN;
+      return Math.max(BASE_HOUR * 60, Math.min(min, END_HOUR * 60 - SLOT_MIN));
+    }
+
+    /* ---------- モーダル ---------- */
+    function selectMood(mood) {
+      modalMood = modalMood === mood ? '' : mood;
+      document.querySelectorAll('.mood-btn').forEach(b =>
+        b.classList.toggle('selected', b.dataset.mood === modalMood));
+    }
+
+    function formatModalDate(d) {
+      const dd = parseDate(d);
+      return `${dd.getMonth() + 1}月${dd.getDate()}日（${dowLabel(dd)}）の記録`;
+    }
+
+    function openModal(id, presetStartMin) {
+      editingId = id || null;
+
+      if (id) {
+        const item = Storage.get(KEY).find(i => i.id === id);
+        if (!item) return;
+        modalDate = item.date;
+        modalMood = item.mood || '';
+        document.getElementById('modalTitle').textContent = '記録を編集';
+        document.getElementById('fTitle').value = item.title || '';
+        document.getElementById('fStart').value = String(timeToMin(item.startTime));
+        document.getElementById('fEnd').value = String(timeToMin(item.endTime));
+        document.getElementById('fNotes').value = item.notes || '';
+      } else {
+        modalDate = currentDate;
+        modalMood = '';
+        const startMin = presetStartMin != null ? presetStartMin : snapToSlot(nowMinutes());
+        document.getElementById('modalTitle').textContent = '記録を追加';
+        document.getElementById('fTitle').value = '';
+        document.getElementById('fStart').value = String(startMin);
+        document.getElementById('fEnd').value = String(Math.min(startMin + SLOT_MIN, END_HOUR * 60));
+        document.getElementById('fNotes').value = '';
+      }
+
+      document.querySelectorAll('.mood-btn').forEach(b =>
+        b.classList.toggle('selected', b.dataset.mood === modalMood));
+      document.getElementById('modalDateLabel').textContent = formatModalDate(modalDate);
+      document.getElementById('modalCancelBtn').textContent = id ? 'キャンセル' : '終了';
+      document.getElementById('modalOverlay').classList.remove('hidden');
+      setTimeout(() => document.getElementById('fTitle').focus(), 120);
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.add('hidden');
+      editingId = null;
+    }
+
+    function overlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    function saveItem() {
+      const title = document.getElementById('fTitle').value.trim();
+      if (!title) { alert('やったことを入力してください'); return; }
+      const startMin = Number(document.getElementById('fStart').value);
+      const endMin   = Number(document.getElementById('fEnd').value);
+      if (endMin <= startMin) { alert('終了時刻は開始時刻より後にしてください'); return; }
+
+      const data = {
+        date: modalDate,
+        title,
+        startTime: minToTime(startMin),
+        endTime:   minToTime(endMin),
+        mood:  modalMood,
+        notes: document.getElementById('fNotes').value.trim()
+      };
+
+      const wasAdding = !editingId;
+
+      if (editingId) {
+        Storage.update(KEY, editingId, data);
+        showToast('更新しました ✓');
+      } else {
+        Storage.add(KEY, data);
+        showToast('追加しました ✓');
+      }
+      render();
+
+      if (wasAdding) {
+        continueAddingFrom(endMin);
+      } else {
+        closeModal();
+      }
+    }
+
+    // 追加後、続けて次の30分枠から入力できるようにモーダルを開いたまま次に進める
+    function continueAddingFrom(prevEndMin) {
+      if (prevEndMin > END_HOUR * 60 - SLOT_MIN) { closeModal(); return; }
+      document.getElementById('fTitle').value = '';
+      document.getElementById('fStart').value = String(prevEndMin);
+      document.getElementById('fEnd').value = String(Math.min(prevEndMin + SLOT_MIN, END_HOUR * 60));
+      modalMood = '';
+      document.getElementById('fNotes').value = '';
+      document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('selected'));
+      setTimeout(() => document.getElementById('fTitle').focus(), 50);
+    }
+
+    function deleteItem(id) {
+      if (!confirmDelete('この記録を削除しますか？')) return;
+      Storage.remove(KEY, id);
+      showToast('削除しました');
+      render();
+    }
+
+    /* ---------- 重なり判定（同じ時間帯の記録を横に並べる） ---------- */
+    function layoutColumns(blocks) {
+      const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+      const clusters = [];
+      let current = [];
+      let clusterEnd = -1;
+      sorted.forEach(b => {
+        if (current.length && b.startMin >= clusterEnd) {
+          clusters.push(current);
+          current = [];
+          clusterEnd = -1;
+        }
+        current.push(b);
+        clusterEnd = Math.max(clusterEnd, b.endMin);
+      });
+      if (current.length) clusters.push(current);
+
+      const result = [];
+      clusters.forEach(cluster => {
+        const columns = [];
+        cluster.forEach(b => {
+          let colIdx = columns.findIndex(endMin => endMin <= b.startMin);
+          if (colIdx === -1) { colIdx = columns.length; columns.push(b.endMin); }
+          else columns[colIdx] = b.endMin;
+          b.col = colIdx;
+        });
+        const totalCols = columns.length;
+        cluster.forEach(b => result.push({ ...b, totalCols }));
+      });
+      return result;
+    }
+
+    function withMinutes(items) {
+      return items.map(item => ({
+        ...item,
+        startMin: timeToMin(item.startTime),
+        endMin:   timeToMin(item.endTime) || (timeToMin(item.startTime) + SLOT_MIN)
+      }));
+    }
+
+    /* ---------- タイムライン ---------- */
+    function buildDayTimelineSkeleton() {
+      const totalMin = (END_HOUR - BASE_HOUR) * 60;
+      document.getElementById('tlContainer').style.height = totalMin * PX_PER_MIN + 'px';
+
+      const hourCol = document.getElementById('tlHourCol');
+      const body = document.getElementById('tlBody');
+      let hourHtml = '';
+      let lineHtml = '';
+      for (let h = BASE_HOUR; h <= END_HOUR; h++) {
+        const top = (h - BASE_HOUR) * 60 * PX_PER_MIN;
+        hourHtml += `<div class="tl-hour-label" style="top:${top}px">${h % 24}:00</div>`;
+        lineHtml += `<div class="tl-hourline" style="top:${top}px"></div>`;
+        if (h < END_HOUR) {
+          lineHtml += `<div class="tl-hourline half" style="top:${top + 30 * PX_PER_MIN}px"></div>`;
+        }
+      }
+      hourCol.innerHTML = hourHtml;
+      body.innerHTML = lineHtml + `<div class="tl-now-line hidden" id="tlNowLine"></div>`;
+      body.addEventListener('click', dayBodyClick);
+    }
+
+    function dayBodyClick(e) {
+      if (e.target !== e.currentTarget) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const offsetY = e.clientY - rect.top;
+      const min = snapToSlot(BASE_HOUR * 60 + offsetY / PX_PER_MIN);
+      openModal(null, min);
+    }
+
+    function renderDayTimeline(items) {
+      const body = document.getElementById('tlBody');
+      body.querySelectorAll('.tl-block').forEach(el => el.remove());
+
+      const laidOut = layoutColumns(withMinutes(items));
+
+      laidOut.forEach(b => {
+        const top = (b.startMin - BASE_HOUR * 60) * PX_PER_MIN;
+        const blockH = Math.max((b.endMin - b.startMin) * PX_PER_MIN, 16);
+        const gap = 2;
+        const widthPct = 100 / b.totalCols;
+        const leftPct = b.col * widthPct;
+
+        const el = document.createElement('div');
+        el.className = 'tl-block';
+        el.style.top = top + 'px';
+        el.style.height = blockH + 'px';
+        el.style.left = `calc(${leftPct}% + ${gap}px)`;
+        el.style.width = `calc(${widthPct}% - ${gap * 2}px)`;
+        el.innerHTML = `<div class="tl-block-title">${moodIcon(b.mood)} ${b.startTime} ${esc(b.title)}</div>`;
+        el.addEventListener('click', ev => { ev.stopPropagation(); openModal(b.id); });
+        body.appendChild(el);
+      });
+    }
+
+    function renderDayNowLine() {
+      const line = document.getElementById('tlNowLine');
+      if (!line) return;
+      if (currentDate !== todayStr()) { line.classList.add('hidden'); return; }
+      const min = nowMinutes();
+      if (min < BASE_HOUR * 60 || min > END_HOUR * 60) { line.classList.add('hidden'); return; }
+      line.classList.remove('hidden');
+      line.style.top = (min - BASE_HOUR * 60) * PX_PER_MIN + 'px';
+    }
+
+    function scrollDayTimelineIntoView() {
+      const body = document.getElementById('tlBody');
+      if (!body) return;
+      let targetMin = currentDate === todayStr() ? nowMinutes() : 8 * 60;
+      targetMin = Math.max(BASE_HOUR * 60, Math.min(targetMin, END_HOUR * 60));
+      const offsetInBody = (targetMin - BASE_HOUR * 60) * PX_PER_MIN;
+      const rect = body.getBoundingClientRect();
+      const targetY = rect.top + window.scrollY + offsetInBody - 160;
+      window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });
+    }
+
+    /* ---------- リスト ---------- */
+    function listRowHtml(item) {
+      return `
+        <div class="ll-list-item">
+          <div class="ll-mood">${moodIcon(item.mood) || '・'}</div>
+          <div class="list-item-body">
+            <div class="list-item-title">
+              <span class="tag" style="margin-right:6px">${item.startTime}〜${item.endTime}</span>${esc(item.title)}
+            </div>
+            ${item.notes ? `<div class="ll-notes">${esc(item.notes)}</div>` : ''}
+          </div>
+          <div class="list-item-actions">
+            <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+            <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+          </div>
+        </div>`;
+    }
+
+    function emptyStateHtml() {
+      return `
+        <div class="empty-state">
+          <div class="empty-state-icon">📔</div>
+          <div class="empty-state-text">この日の記録はまだありません</div>
+          <div class="empty-state-sub">＋ ボタンかタイムラインのタップで記録できます</div>
+        </div>`;
+    }
+
+    function renderList(items) {
+      const container = document.getElementById('listContainer');
+      if (items.length === 0) { container.innerHTML = emptyStateHtml(); return; }
+      const sorted = [...items].sort((a, b) => timeToMin(a.startTime) - timeToMin(b.startTime));
+      container.innerHTML = `<div class="card">${sorted.map(listRowHtml).join('')}</div>`;
+    }
+
+    function renderSummary(items) {
+      const totalMin = items.reduce((sum, i) => sum + (timeToMin(i.endTime) - timeToMin(i.startTime)), 0);
+      const h = Math.floor(totalMin / 60), m = totalMin % 60;
+      document.getElementById('tbSummary').innerHTML = items.length === 0 ? '' : `
+        <span><b>${items.length}</b>件</span>
+        <span>記録時間 <b>${h > 0 ? h + '時間' : ''}${m > 0 ? m + '分' : ''}</b></span>`;
+    }
+
+    /* ---------- メイン描画 ---------- */
+    function getItemsForView() {
+      return Storage.get(KEY).filter(i => i.date === currentDate);
+    }
+
+    function render() {
+      renderDateLabel();
+      const items = getItemsForView();
+      renderSummary(items);
+      renderDayTimeline(items);
+      renderDayNowLine();
+      renderList(items);
+    }
+
+    buildTimeSelects();
+    buildDayTimelineSkeleton();
+    render();
+    scrollDayTimelineIntoView();
+
+    clearInterval(nowTimer);
+    nowTimer = setInterval(() => { renderDayNowLine(); }, 60000);
+  </script>
+</body>
+</html>
