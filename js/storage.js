@@ -41,6 +41,20 @@ const Storage = {
     this._recordDeletion(key, id);
   },
 
+  // 削除したアイテムを元の内容のまま復元する（「元に戻す」用）
+  restore(key, item) {
+    const items = this.get(key);
+    items.unshift(item);
+    this.set(key, items);
+
+    const TOMBSTONE_KEY = 'life_sync_tombstones';
+    try {
+      let tombstones = JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '[]');
+      tombstones = tombstones.filter(t => t.id !== `${key}::${item.id}`);
+      localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(tombstones));
+    } catch {}
+  },
+
   // 削除した項目を記録しておく（同期時のマージで復活させないため）
   _recordDeletion(key, id) {
     const TOMBSTONE_KEY = 'life_sync_tombstones';

@@ -19,6 +19,11 @@
     <button class="tab-btn" id="tab-done"     onclick="switchTab('done')">完了済み</button>
   </div>
 
+  <div class="sort-toggle" id="sortToggle" style="margin:12px 16px 0">
+    <button onclick="setSort('date')" id="sortDateBtn">📅 日付順</button>
+    <button onclick="setSort('priority')" id="sortPriorityBtn">🔥 優先度順</button>
+  </div>
+
   <!-- Google Calendar パネル -->
   <div id="gcalPanel" class="hidden" style="background:var(--card);border-bottom:1px solid var(--border)">
     <div style="padding:12px 16px">
@@ -69,6 +74,12 @@
           <label class="form-label">時刻（任意）</label>
           <input type="time" class="form-input" id="fTime">
         </div>
+      </div>
+      <div class="quick-date-row">
+        <button type="button" class="quick-date-btn" onclick="setQuickDate('today')">今日</button>
+        <button type="button" class="quick-date-btn" onclick="setQuickDate('tomorrow')">明日</button>
+        <button type="button" class="quick-date-btn" onclick="setQuickDate('nextweek')">来週</button>
+        <button type="button" class="quick-date-btn" onclick="setQuickDate('none')">日付なし</button>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -158,6 +169,7 @@
   <script>
     const KEY = 'life_reminders';
     let currentTab = 'upcoming';
+    let currentSort = localStorage.getItem('life_reminder_sort') || 'date';
     let editingId = null;
     let gcalPanelOpen = false;
 
@@ -203,6 +215,18 @@
         document.getElementById('fNotes').value    = '';
       }
       setTimeout(() => document.getElementById('fTitle').focus(), 120);
+    }
+
+    // モーダルの「今日／明日／来週／日付なし」ワンタップ設定
+    function setQuickDate(kind) {
+      const d = new Date();
+      if (kind === 'none') {
+        document.getElementById('fDate').value = '';
+        return;
+      }
+      if (kind === 'tomorrow') d.setDate(d.getDate() + 1);
+      if (kind === 'nextweek') d.setDate(d.getDate() + 7);
+      document.getElementById('fDate').value = d.toISOString().slice(0, 10);
     }
 
     function closeModal() {
@@ -293,11 +317,53 @@
       return d.toISOString().slice(0, 10);
     }
 
+    // 即削除＋「元に戻す」トーストで安全に取り消せるようにする
+    // （confirm ダイアログより1タップ／1スワイプで速く、誤操作は4.5秒以内なら復元可能）
     function deleteItem(id) {
-      if (!confirmDelete('このリマインダーを削除しますか？')) return;
+      const item = Storage.get(KEY).find(i => i.id === id);
+      if (!item) return;
       Storage.remove(KEY, id);
-      showToast('削除しました');
       render();
+      showToast('削除しました', '元に戻す', () => {
+        Storage.restore(KEY, item);
+        render();
+      });
+    }
+
+    function setSort(sort) {
+      currentSort = sort;
+      localStorage.setItem('life_reminder_sort', sort);
+      render();
+    }
+
+    function updateSortToggleUI() {
+      document.getElementById('sortDateBtn').classList.toggle('active', currentSort === 'date');
+      document.getElementById('sortPriorityBtn').classList.toggle('active', currentSort === 'priority');
+    }
+
+    function sortItems(list) {
+      if (currentSort === 'priority') {
+        const order = { high: 0, medium: 1, low: 2 };
+        list.sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1));
+      } else {
+        list.sort((a, b) => {
+          if (!a.date && !b.date) return 0;
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+          return (a.time || '') < (b.time || '') ? -1 : (a.time || '') > (b.time || '') ? 1 : 0;
+        });
+      }
+    }
+
+    // 日付を「期限切れ／今日／明日／今週／それ以降／未定」に振り分ける（Things風グルーピング）
+    function dateGroupOf(dateStr, todayStr, tomorrowStr, weekEndStr) {
+      if (!dateStr) return 'none';
+      if (dateStr < todayStr) return 'overdue';
+      if (dateStr === todayStr) return 'today';
+      if (dateStr === tomorrowStr) return 'tomorrow';
+      if (dateStr <= weekEndStr) return 'week';
+      return 'later';
     }
 
     function switchTab(tab) {
@@ -305,10 +371,124 @@
       ['upcoming','today','done'].forEach(t => {
         document.getElementById('tab-' + t).classList.toggle('active', t === tab);
       });
+      document.getElementById('sortToggle').classList.toggle('hidden', tab === 'done');
       render();
     }
 
+    function updateTabCounts() {
+      const all = Storage.get(KEY);
+      const todayStr = today();
+      const upcomingCount = all.filter(i => !i.done).length;
+      const todayCount    = all.filter(i => !i.done && i.date === todayStr).length;
+      const doneCount     = all.filter(i => i.done).length;
+      const label = (base, count) => count > 0 ? `${base} <span class="tab-count">${count}</span>` : base;
+      document.getElementById('tab-upcoming').innerHTML = label('未完了', upcomingCount);
+      document.getElementById('tab-today').innerHTML    = label('今日', todayCount);
+      document.getElementById('tab-done').innerHTML     = label('完了済み', doneCount);
+    }
+
+    function renderItem(item, todayStr) {
+      const isOverdue = !item.done && item.date && item.date < todayStr;
+      const isToday   = item.date === todayStr;
+
+      const timeStr = item.time ? ` ${item.time}` : '';
+      let datePart = '';
+      if (item.date) {
+        if (isOverdue) {
+          datePart = `<span class="badge badge-danger">期限切れ ${formatDate(item.date)}${timeStr}</span>`;
+        } else if (isToday) {
+          datePart = item.time
+            ? `<span class="badge badge-warning">今日 ${item.time}</span>`
+            : `<span class="badge badge-warning">今日</span>`;
+        } else {
+          datePart = `<span style="font-size:12px;color:var(--text-muted)">${formatDate(item.date)}${timeStr}</span>`;
+        }
+      }
+
+      const repeatPart = (item.repeat && item.repeat !== 'none')
+        ? `<span class="tag">${repeatLabel(item.repeat)}</span>` : '';
+
+      const gcalPart = item.gcalEventId
+        ? `<span class="tag" style="background:#e8f0fe;color:#4285f4;font-size:10px;padding:2px 7px">G</span>`
+        : '';
+
+      return `
+        <div class="swipe-wrap">
+          <div class="swipe-bg">🗑️ 削除</div>
+          <div class="swipe-content" data-id="${item.id}">
+            <div class="list-item" style="background:${isOverdue ? 'var(--danger-light)' : ''}">
+              <button onclick="toggleDone('${item.id}')" style="
+                width:26px;height:26px;border-radius:50%;flex-shrink:0;margin-top:2px;
+                border:2px solid ${item.done ? 'var(--success)' : 'var(--border)'};
+                background:${item.done ? 'var(--success)' : 'transparent'};
+                color:white;cursor:pointer;font-size:15px;
+                display:flex;align-items:center;justify-content:center;">
+                ${item.done ? '✓' : ''}
+              </button>
+              <div class="list-item-body">
+                <div class="list-item-title" style="${item.done ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${esc(item.title)}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:5px">
+                  ${priorityBadge(item.priority)}
+                  ${datePart}
+                  ${repeatPart}
+                  ${gcalPart}
+                </div>
+                ${item.notes ? `<div style="font-size:12px;color:var(--text-sub);margin-top:4px">${esc(item.notes)}</div>` : ''}
+              </div>
+              <div class="list-item-actions">
+                <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+                <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // スマホでの左スワイプ削除。タップ操作（✏️/🗑️ボタン）はそのまま併用できる
+    function attachSwipeHandlers() {
+      document.querySelectorAll('.swipe-content').forEach(el => {
+        let startX = 0, startY = 0, dx = 0, axis = null, active = false;
+
+        el.addEventListener('touchstart', e => {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          dx = 0;
+          axis = null;
+          active = true;
+          el.classList.remove('snap-back');
+          el.classList.add('dragging');
+        }, { passive: true });
+
+        el.addEventListener('touchmove', e => {
+          if (!active) return;
+          const curX = e.touches[0].clientX - startX;
+          const curY = e.touches[0].clientY - startY;
+          if (axis === null) axis = Math.abs(curX) > Math.abs(curY) + 4 ? 'x' : 'y';
+          if (axis !== 'x') return;
+          dx = Math.min(0, curX);
+          el.style.transform = `translateX(${dx}px)`;
+        }, { passive: true });
+
+        el.addEventListener('touchend', () => {
+          if (!active) return;
+          active = false;
+          el.classList.remove('dragging');
+          el.classList.add('snap-back');
+          if (dx < -90) {
+            const id = el.dataset.id;
+            el.style.transform = 'translateX(-100%)';
+            setTimeout(() => deleteItem(id), 150);
+          } else {
+            el.style.transform = 'translateX(0)';
+          }
+        });
+      });
+    }
+
     function render() {
+      updateSortToggleUI();
+      updateTabCounts();
+
       const todayStr = today();
       let items = Storage.get(KEY);
 
@@ -319,16 +499,6 @@
       } else {
         items = items.filter(i => !i.done);
       }
-
-      items.sort((a, b) => {
-        if (currentTab === 'done') {
-          return (b.updatedAt || b.createdAt) > (a.updatedAt || a.createdAt) ? 1 : -1;
-        }
-        if (!a.date && !b.date) return 0;
-        if (!a.date) return 1;
-        if (!b.date) return -1;
-        return a.date < b.date ? -1 : 1;
-      });
 
       const container = document.getElementById('listContainer');
 
@@ -345,59 +515,46 @@
         return;
       }
 
-      const html = items.map(item => {
-        const isOverdue = !item.done && item.date && item.date < todayStr;
-        const isToday   = item.date === todayStr;
+      if (currentTab === 'done') {
+        items.sort((a, b) => (b.updatedAt || b.createdAt) > (a.updatedAt || a.createdAt) ? 1 : -1);
+        container.innerHTML = `<div class="card">${items.map(i => renderItem(i, todayStr)).join('')}</div>`;
+        attachSwipeHandlers();
+        return;
+      }
 
-        const timeStr = item.time ? ` ${item.time}` : '';
-        let datePart = '';
-        if (item.date) {
-          if (isOverdue) {
-            datePart = `<span class="badge badge-danger">期限切れ ${formatDate(item.date)}${timeStr}</span>`;
-          } else if (isToday) {
-            datePart = item.time
-              ? `<span class="badge badge-warning">今日 ${item.time}</span>`
-              : `<span class="badge badge-warning">今日</span>`;
-          } else {
-            datePart = `<span style="font-size:12px;color:var(--text-muted)">${formatDate(item.date)}${timeStr}</span>`;
-          }
-        }
+      if (currentTab === 'today') {
+        sortItems(items);
+        container.innerHTML = `<div class="card">${items.map(i => renderItem(i, todayStr)).join('')}</div>`;
+        attachSwipeHandlers();
+        return;
+      }
 
-        const repeatPart = (item.repeat && item.repeat !== 'none')
-          ? `<span class="tag">${repeatLabel(item.repeat)}</span>` : '';
+      // 未完了タブ：期限切れ／今日／明日／今週／それ以降／未定 にグループ分けして表示
+      const tomorrowStr = getNextDate(todayStr, 'daily');
+      const weekEndStr  = getNextDate(todayStr, 'weekly');
+      const groups = { overdue: [], today: [], tomorrow: [], week: [], later: [], none: [] };
+      items.forEach(i => groups[dateGroupOf(i.date, todayStr, tomorrowStr, weekEndStr)].push(i));
 
-        const gcalPart = item.gcalEventId
-          ? `<span class="tag" style="background:#e8f0fe;color:#4285f4;font-size:10px;padding:2px 7px">G</span>`
-          : '';
+      const groupMeta = [
+        ['overdue',  '⚠️ 期限切れ'],
+        ['today',    '📅 今日'],
+        ['tomorrow', '☀️ 明日'],
+        ['week',     '🗓️ 今週'],
+        ['later',    '📆 それ以降'],
+        ['none',     '🗂️ 日付未定']
+      ];
 
-        return `
-          <div class="list-item" style="background:${isOverdue ? 'var(--danger-light)' : ''}">
-            <button onclick="toggleDone('${item.id}')" style="
-              width:26px;height:26px;border-radius:50%;flex-shrink:0;margin-top:2px;
-              border:2px solid ${item.done ? 'var(--success)' : 'var(--border)'};
-              background:${item.done ? 'var(--success)' : 'transparent'};
-              color:white;cursor:pointer;font-size:15px;
-              display:flex;align-items:center;justify-content:center;">
-              ${item.done ? '✓' : ''}
-            </button>
-            <div class="list-item-body">
-              <div class="list-item-title" style="${item.done ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${esc(item.title)}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:5px">
-                ${priorityBadge(item.priority)}
-                ${datePart}
-                ${repeatPart}
-                ${gcalPart}
-              </div>
-              ${item.notes ? `<div style="font-size:12px;color:var(--text-sub);margin-top:4px">${esc(item.notes)}</div>` : ''}
-            </div>
-            <div class="list-item-actions">
-              <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
-              <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
-            </div>
-          </div>`;
-      }).join('');
+      let html = '';
+      groupMeta.forEach(([key, label]) => {
+        const list = groups[key];
+        if (list.length === 0) return;
+        sortItems(list);
+        html += `<div class="date-group-title">${label}<span class="date-group-count">${list.length}</span></div>`;
+        html += `<div class="card">${list.map(i => renderItem(i, todayStr)).join('')}</div>`;
+      });
 
-      container.innerHTML = `<div class="card">${html}</div>`;
+      container.innerHTML = html;
+      attachSwipeHandlers();
     }
 
     render();

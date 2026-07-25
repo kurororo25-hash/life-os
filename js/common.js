@@ -2,17 +2,35 @@
  * common.js - 全ページ共通ユーティリティ
  */
 
-function showToast(msg) {
+// msg: 表示文言 / actionLabel・actionFn を渡すと「元に戻す」等のボタン付きトーストになる
+function showToast(msg, actionLabel, actionFn) {
   let toast = document.getElementById('toast');
   if (!toast) {
     toast = document.createElement('div');
     toast.id = 'toast';
     document.body.appendChild(toast);
   }
-  toast.textContent = msg;
+  toast.innerHTML = '';
+
+  const text = document.createElement('span');
+  text.textContent = msg;
+  toast.appendChild(text);
+
+  if (actionLabel && actionFn) {
+    const btn = document.createElement('button');
+    btn.textContent = actionLabel;
+    btn.className = 'toast-action';
+    btn.onclick = () => {
+      actionFn();
+      toast.classList.remove('show');
+      clearTimeout(toast._timer);
+    };
+    toast.appendChild(btn);
+  }
+
   toast.classList.add('show');
   clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => toast.classList.remove('show'), 2200);
+  toast._timer = setTimeout(() => toast.classList.remove('show'), actionLabel ? 4500 : 2200);
 }
 
 function formatDate(dateStr) {
