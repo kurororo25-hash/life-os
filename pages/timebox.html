@@ -132,28 +132,29 @@
     }
     .tl-block {
       position: absolute;
+      left: 6px;
+      right: 6px;
       border-radius: 6px;
       border-left: 4px solid var(--primary);
       background: var(--primary-light);
-      padding: 0 7px;
-      overflow: hidden;
+      padding: 3px 7px;
       cursor: pointer;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       -webkit-tap-highlight-color: transparent;
       display: flex;
-      align-items: center;
+      flex-direction: column;
+      justify-content: center;
+      gap: 2px;
     }
-    .tl-block-title {
+    .tl-block-line {
       font-size: 11px;
       font-weight: 700;
       color: var(--text);
-      line-height: 1.2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.3;
+      white-space: normal;
+      word-break: break-word;
     }
-    .tl-block.done { opacity: 0.45; border-left-color: var(--text-muted); background: var(--bg); }
-    .tl-block.done .tl-block-title { text-decoration: line-through; }
+    .tl-block-line.done { opacity: 0.55; text-decoration: line-through; }
     .tl-hint {
       text-align: center;
       font-size: 11px;
@@ -363,7 +364,8 @@
 
       <div class="form-group">
         <label class="form-label">やること ＊</label>
-        <input type="text" class="form-input" id="fTitle" placeholder="例：資料作成">
+        <input type="text" class="form-input" id="fTitle" placeholder="例：資料作成"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();saveItem();}">
       </div>
 
       <div class="form-group">
@@ -731,58 +733,112 @@
     }
 
     /* ---------- 1日表示 ---------- */
-    function buildDayTimelineSkeleton() {
-      const totalMin = (END_HOUR - BASE_HOUR) * 60;
-      document.getElementById('tlContainer').style.height = totalMin * PX_PER_MIN + 'px';
+    // 各30分枠の高さは基本 SLOT_MIN*PX_PER_MIN だが、予定が多い枠はそのぶん伸びる。
+    // 枠が伸びた場合はそれ以降の時刻ラベル・罫線・予定もすべて下へ押し下げて、
+    // 「16:00の内容が17:00の位置にはみ出す」ズレが起きないようにする。
+    let daySlotTops = {};
+    let daySlotHeights = {};
 
-      const hourCol = document.getElementById('tlHourCol');
-      const body = document.getElementById('tlBody');
-      let hourHtml = '';
-      let lineHtml = '';
-      for (let h = BASE_HOUR; h <= END_HOUR; h++) {
-        const top = (h - BASE_HOUR) * 60 * PX_PER_MIN;
-        hourHtml += `<div class="tl-hour-label" style="top:${top}px">${h}:00</div>`;
-        lineHtml += `<div class="tl-hourline" style="top:${top}px"></div>`;
-        if (h < END_HOUR) {
-          lineHtml += `<div class="tl-hourline half" style="top:${top + 30 * PX_PER_MIN}px"></div>`;
-        }
-      }
-      hourCol.innerHTML = hourHtml;
-      body.innerHTML = lineHtml + `<div class="tl-now-line hidden" id="tlNowLine"></div>`;
-      body.addEventListener('click', dayBodyClick);
+    function buildDayTimelineSkeleton() {
+      document.getElementById('tlBody').addEventListener('click', dayBodyClick);
     }
 
     function dayBodyClick(e) {
       if (e.target !== e.currentTarget) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const offsetY = e.clientY - rect.top;
-      const min = snapToSlot(BASE_HOUR * 60 + offsetY / PX_PER_MIN);
-      openModal(null, minToTime(min), currentDate);
+      openModal(null, minToTime(minuteAtY(offsetY)), currentDate);
+    }
+
+    function minuteAtY(y) {
+      const starts = Object.keys(daySlotTops).map(Number).sort((a, b) => a - b);
+      let result = BASE_HOUR * 60;
+      starts.forEach(startMin => {
+        if (y >= daySlotTops[startMin]) result = startMin;
+      });
+      return result;
+    }
+
+    function minuteToY(min) {
+      const slotStart = Math.floor((min - BASE_HOUR * 60) / SLOT_MIN) * SLOT_MIN + BASE_HOUR * 60;
+      const top = daySlotTops[slotStart];
+      const height = daySlotHeights[slotStart];
+      if (top === undefined) return 0;
+      const frac = (min - slotStart) / SLOT_MIN;
+      return top + frac * height;
     }
 
     function renderDayTimeline(items) {
+      const hourCol = document.getElementById('tlHourCol');
       const body = document.getElementById('tlBody');
-      body.querySelectorAll('.tl-block').forEach(el => el.remove());
+      body.innerHTML = '';
 
-      const laidOut = layoutColumns(withMinutes(items));
-      const blockH = SLOT_MIN * PX_PER_MIN;
-
-      laidOut.forEach(b => {
-        const top = (b.startMin - BASE_HOUR * 60) * PX_PER_MIN;
-        const gap = 2;
-        const widthPct = 100 / b.totalCols;
-        const leftPct = b.col * widthPct;
-
-        const el = document.createElement('div');
-        el.className = 'tl-block' + (b.done ? ' done' : '');
-        el.style.top = top + 'px';
-        el.style.height = blockH + 'px';
-        el.style.left = `calc(${leftPct}% + ${gap}px)`;
-        el.style.width = `calc(${widthPct}% - ${gap * 2}px)`;
-        el.innerHTML = `<div class="tl-block-title">${b.startTime} ${esc(b.title)}</div>`;
-        el.addEventListener('click', ev => { ev.stopPropagation(); openModal(b.id); });
-        body.appendChild(el);
+      const minSlotH = SLOT_MIN * PX_PER_MIN;
+      const groups = {};
+      withMinutes(items).forEach(b => {
+        (groups[b.startMin] = groups[b.startMin] || []).push(b);
       });
+
+      const slotStarts = [];
+      for (let min = BASE_HOUR * 60; min < END_HOUR * 60; min += SLOT_MIN) slotStarts.push(min);
+
+      // 1) 予定がある枠だけ先にブロックを作って必要な高さを測る
+      const slotEls = {};
+      const heights = {};
+      slotStarts.forEach(startMin => {
+        const groupItems = groups[startMin];
+        if (!groupItems || groupItems.length === 0) { heights[startMin] = minSlotH; return; }
+        const el = document.createElement('div');
+        el.className = 'tl-block';
+        el.style.minHeight = minSlotH + 'px';
+        el.innerHTML = groupItems.map(b =>
+          `<div class="tl-block-line${b.done ? ' done' : ''}" data-id="${b.id}">${b.startTime} ${esc(b.title)}</div>`
+        ).join('');
+        body.appendChild(el);
+        heights[startMin] = el.offsetHeight;
+        slotEls[startMin] = el;
+      });
+
+      // 2) 累積位置を計算（伸びた枠の分、以降の枠を下へ押し下げる）
+      const tops = {};
+      let cursor = 0;
+      slotStarts.forEach(startMin => {
+        tops[startMin] = cursor;
+        cursor += heights[startMin];
+      });
+      const totalHeight = cursor;
+      daySlotTops = tops;
+      daySlotHeights = heights;
+
+      document.getElementById('tlContainer').style.height = totalHeight + 'px';
+
+      // 3) ブロックを確定位置に配置してクリックイベントを付与
+      slotStarts.forEach(startMin => {
+        const el = slotEls[startMin];
+        if (!el) return;
+        el.style.top = tops[startMin] + 'px';
+        el.querySelectorAll('.tl-block-line').forEach(lineEl => {
+          lineEl.addEventListener('click', ev => {
+            ev.stopPropagation();
+            openModal(lineEl.dataset.id);
+          });
+        });
+      });
+
+      // 4) 時刻ラベル・罫線を、伸びた枠に合わせて再配置する
+      let hourHtml = '';
+      let lineHtml = '';
+      for (let h = BASE_HOUR; h <= END_HOUR; h++) {
+        const top = h === END_HOUR ? totalHeight : tops[h * 60];
+        hourHtml += `<div class="tl-hour-label" style="top:${top}px">${h}:00</div>`;
+        lineHtml += `<div class="tl-hourline" style="top:${top}px"></div>`;
+        if (h < END_HOUR) {
+          lineHtml += `<div class="tl-hourline half" style="top:${tops[h * 60 + 30]}px"></div>`;
+        }
+      }
+      hourCol.innerHTML = hourHtml;
+      body.insertAdjacentHTML('afterbegin', lineHtml);
+      body.insertAdjacentHTML('beforeend', `<div class="tl-now-line hidden" id="tlNowLine"></div>`);
     }
 
     function renderDayNowLine() {
@@ -792,7 +848,7 @@
       const min = nowMinutes();
       if (min < BASE_HOUR * 60 || min > END_HOUR * 60) { line.classList.add('hidden'); return; }
       line.classList.remove('hidden');
-      line.style.top = (min - BASE_HOUR * 60) * PX_PER_MIN + 'px';
+      line.style.top = minuteToY(min) + 'px';
     }
 
     function scrollDayTimelineIntoView() {
@@ -801,7 +857,7 @@
       if (!body) return;
       let targetMin = currentDate === todayStr() ? nowMinutes() : 8 * 60;
       targetMin = Math.max(BASE_HOUR * 60, Math.min(targetMin, END_HOUR * 60));
-      const offsetInBody = (targetMin - BASE_HOUR * 60) * PX_PER_MIN;
+      const offsetInBody = minuteToY(targetMin);
       const rect = body.getBoundingClientRect();
       const targetY = rect.top + window.scrollY + offsetInBody - 160;
       window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });

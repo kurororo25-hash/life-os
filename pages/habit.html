@@ -239,7 +239,8 @@
       </div>
       <div class="form-group">
         <label class="form-label">習慣名 ＊</label>
-        <input type="text" class="form-input" id="fHabitLabel" placeholder="例：ストレッチ">
+        <input type="text" class="form-input" id="fHabitLabel" placeholder="例：ストレッチ"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();saveHabitModal();}">
       </div>
       <div class="form-group">
         <label class="form-label">時間帯</label>
@@ -249,7 +250,7 @@
         </select>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-ghost" onclick="closeHabitModal()">キャンセル</button>
+        <button class="btn btn-ghost" id="habitModalCancelBtn" onclick="closeHabitModal()">キャンセル</button>
         <button class="btn btn-primary" onclick="saveHabitModal()">保存する</button>
       </div>
     </div>
@@ -360,6 +361,7 @@
     function openAddModal() {
       editingHabitId = null;
       document.getElementById('habitModalTitle').textContent = '習慣を追加';
+      document.getElementById('habitModalCancelBtn').textContent = '終了';
       document.getElementById('fHabitLabel').value = '';
       document.getElementById('fHabitSection').value = 'morning';
       document.getElementById('habitModalOverlay').classList.remove('hidden');
@@ -372,6 +374,7 @@
       editingHabitId = id;
       editingHabitSection = h.section;
       document.getElementById('habitModalTitle').textContent = '習慣を編集';
+      document.getElementById('habitModalCancelBtn').textContent = 'キャンセル';
       document.getElementById('fHabitLabel').value = h.label;
       document.getElementById('fHabitSection').value = h.section;
       document.getElementById('habitModalOverlay').classList.remove('hidden');
@@ -390,6 +393,7 @@
       const label = document.getElementById('fHabitLabel').value.trim();
       if (!label) { alert('習慣名を入力してください'); return; }
       const section = document.getElementById('fHabitSection').value;
+      const wasAdding = !editingHabitId;
 
       if (editingHabitId) {
         const oldSection = editingHabitSection;
@@ -407,8 +411,14 @@
         showToast('追加しました ✓');
       }
       saveHabits(habits);
-      closeHabitModal();
       render();
+
+      if (wasAdding) {
+        document.getElementById('fHabitLabel').value = '';
+        setTimeout(() => document.getElementById('fHabitLabel').focus(), 50);
+      } else {
+        closeHabitModal();
+      }
     }
 
     function deleteHabit(id, section) {

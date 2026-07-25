@@ -57,7 +57,8 @@
       </div>
       <div class="form-group">
         <label class="form-label">タイトル ＊</label>
-        <input type="text" class="form-input" id="fTitle" placeholder="例：薬を飲む">
+        <input type="text" class="form-input" id="fTitle" placeholder="例：薬を飲む"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();saveItem();}">
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -100,7 +101,7 @@
         <textarea class="form-textarea" id="fNotes" placeholder="補足メモ（任意）"></textarea>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-ghost" onclick="closeModal()">キャンセル</button>
+        <button class="btn btn-ghost" id="modalCancelBtn" onclick="closeModal()">キャンセル</button>
         <button class="btn btn-primary" onclick="saveItem()">保存する</button>
       </div>
     </div>
@@ -180,6 +181,7 @@
     function openModal(id) {
       editingId = id || null;
       document.getElementById('modalTitle').textContent = id ? 'リマインダーを編集' : 'リマインダーを追加';
+      document.getElementById('modalCancelBtn').textContent = id ? 'キャンセル' : '終了';
       document.getElementById('modalOverlay').classList.remove('hidden');
 
       if (id) {
@@ -226,6 +228,7 @@
         done:     false
       };
 
+      const wasAdding = !editingId;
       let saved;
       if (editingId) {
         saved = Storage.update(KEY, editingId, data);
@@ -234,13 +237,26 @@
         saved = Storage.add(KEY, data);
         showToast('追加しました ✓');
       }
-      closeModal();
       render();
 
       // Google連動中かつ日付ありなら自動同期
       if (GCal.isSignedIn() && saved && saved.date) {
         GCal.syncReminder(saved);
       }
+
+      if (wasAdding) {
+        continueAddingReminder();
+      } else {
+        closeModal();
+      }
+    }
+
+    // 追加後、続けて次のリマインダーを入力できるようにモーダルを開いたまま次に進める
+    // （日付・時刻・優先度・繰り返しは直前の入力を引き継ぎ、タイトルとメモだけ空にする）
+    function continueAddingReminder() {
+      document.getElementById('fTitle').value = '';
+      document.getElementById('fNotes').value = '';
+      setTimeout(() => document.getElementById('fTitle').focus(), 50);
     }
 
     function toggleDone(id) {
