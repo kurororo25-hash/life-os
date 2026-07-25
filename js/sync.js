@@ -11,11 +11,13 @@
  *   - localStorage の "life_" で始まる全キーを1つのJSONファイルにまとめ、
  *     Googleドライブの「アプリ専用フォルダ（appDataFolder）」に保存する。
  *     このフォルダは本人のドライブ画面には表示されず、このアプリだけが読み書きできる。
- *   - ページ読み込み時に自動で最新データを取得（pull）。
+ *   - ページ読み込み時に自動で最新データを取得・マージする。
  *   - データ変更時は2.5秒後に自動でアップロード（push、まとめて送信）。
- *   - 更新日時（updatedAt）を比較し、新しい方を採用する単純な方式。
- *     ※同時に2台で同時編集した場合は、後から同期した方の内容で上書きされます。
- *     　基本は「使い終わったら次の端末を触る前に少し待つ」運用を想定。
+ *   - 同期は「まるごと上書き」ではなく、項目（id）単位でマージする。
+ *     配列データ（リマインダー等）は id ごとに更新日時が新しい方を採用し、
+ *     どちらか片方にしか無い項目はそのまま残す＝2台の未同期な追加が
+ *     お互いを消し合わない。削除だけは「削除済み記録（tombstone）」を
+ *     残して、マージ時に復活しないようにしている。
  */
 const Sync = (() => {
   const CLIENT_ID    = '306443567956-en4g26uhd8s8lpme7r0d9ha37aqehm9o.apps.googleusercontent.com';
@@ -26,6 +28,7 @@ const Sync = (() => {
   const FILE_ID_KEY  = 'sync_file_id';
   const LOCAL_TS_KEY = 'sync_local_updated_at';
   const LAST_KEY     = 'sync_last_synced_at';
+  const TOMBSTONE_KEY = 'life_sync_tombstones';
 
   let gisReady     = false;
   let tokenClient  = null;
@@ -34,6 +37,8 @@ const Sync = (() => {
   let suppress     = false;
   let pulledOnLoad = false;
   let silentRefreshTried = false;
+  let refreshPromise = null;
+  let refreshResolve = null;
 
   /* --------------------------------------------------
    * localStorage の書き込みをフックして自動push予約
@@ -51,7 +56,8 @@ const Sync = (() => {
     if (!accessToken) return;
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
-      push().catch(e => console.warn('[Sync] auto push failed:', e));
+      // 編集中に裏で走る自動保存なので、リモート側の変更があってもリロードはしない
+      _mergeAndSync(false).catch(e => console.warn('[Sync] auto push failed:', e));
     }, 2500);
   }
 
@@ -70,14 +76,24 @@ const Sync = (() => {
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(EXPIRY_KEY);
           _updateUI();
+          if (refreshResolve) { refreshResolve(false); refreshResolve = null; }
           return;
         }
         accessToken = resp.access_token;
         rawSetItem(TOKEN_KEY, accessToken);
         rawSetItem(EXPIRY_KEY, String(Date.now() + (Number(resp.expires_in) || 3600) * 1000));
         _updateUI();
+
+        if (refreshResolve) {
+          // サイレント再認証待ちのリクエストがあれば、それに結果を返すだけ
+          // （呼び出し元が改めてpull/pushをリトライする）。
+          refreshResolve(true);
+          refreshResolve = null;
+          return;
+        }
+
         try {
-          await pullIfNewer();
+          await mergeSync();
           if (typeof showToast === 'function') showToast('同期しました 🔄');
         } catch (e) {
           console.warn('[Sync] initial sync failed:', e);
@@ -106,7 +122,7 @@ const Sync = (() => {
     if (pulledOnLoad) return;
     pulledOnLoad = true;
     try {
-      await pullIfNewer();
+      await mergeSync();
     } catch (e) {
       if (e && e.status === 401) {
         if (tokenClient && !silentRefreshTried) {
@@ -159,28 +175,96 @@ const Sync = (() => {
     return data;
   }
 
-  function _applyRemote(remote) {
-    if (!remote || !remote.data) return;
-    suppress = true;
-    try {
-      for (const [k, v] of Object.entries(remote.data)) {
-        localStorage.setItem(k, v);
-      }
-    } finally {
-      suppress = false;
+  function _parseJSON(str, fallback) {
+    try { return JSON.parse(str); } catch { return fallback; }
+  }
+
+  function _itemTimestamp(item) {
+    return (item && (item.updatedAt || item.createdAt || item.deletedAt)) || '';
+  }
+
+  // id が同じ項目は更新日時が新しい方を採用しつつ、片方にしか無い項目は
+  // そのまま残す（＝2台の未同期な追加・編集がお互いを消し合わない）。
+  function _mergeArraysById(localArr, remoteArr) {
+    const map = new Map();
+    for (const item of localArr) {
+      if (item && item.id != null) map.set(item.id, item);
     }
-    rawSetItem(LOCAL_TS_KEY, remote.updatedAt || new Date().toISOString());
-    rawSetItem(LAST_KEY, new Date().toISOString());
+    for (const item of remoteArr) {
+      if (!item || item.id == null) continue;
+      const existing = map.get(item.id);
+      if (!existing || _itemTimestamp(item) > _itemTimestamp(existing)) {
+        map.set(item.id, item);
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  // localRaw/remoteRaw は { "life_xxx": "JSON文字列" } の形。
+  // 配列データは id 単位でマージし、削除済み(tombstone)の項目は除外する。
+  // 配列以外（習慣チェックの状態など）は全体の更新日時で新しい方を採用する。
+  function _mergeData(localRaw, remoteRaw, remoteNewer) {
+    const localTomb  = _parseJSON(localRaw[TOMBSTONE_KEY], []);
+    const remoteTomb = _parseJSON(remoteRaw[TOMBSTONE_KEY], []);
+    const mergedTomb = _mergeArraysById(
+      Array.isArray(localTomb) ? localTomb : [],
+      Array.isArray(remoteTomb) ? remoteTomb : []
+    );
+    const tombMap = new Map(mergedTomb.map(t => [`${t.targetKey}::${t.targetId}`, t.deletedAt]));
+
+    const keys = new Set([...Object.keys(localRaw), ...Object.keys(remoteRaw)]);
+    const result = {};
+
+    for (const key of keys) {
+      if (key === TOMBSTONE_KEY) {
+        result[key] = JSON.stringify(mergedTomb);
+        continue;
+      }
+      const lRaw = localRaw[key];
+      const rRaw = remoteRaw[key];
+      if (lRaw === undefined) { result[key] = rRaw; continue; }
+      if (rRaw === undefined) { result[key] = lRaw; continue; }
+      if (lRaw === rRaw) { result[key] = lRaw; continue; }
+
+      const lVal = _parseJSON(lRaw, undefined);
+      const rVal = _parseJSON(rRaw, undefined);
+
+      if (Array.isArray(lVal) && Array.isArray(rVal)) {
+        const merged = _mergeArraysById(lVal, rVal).filter(item => {
+          const deletedAt = tombMap.get(`${key}::${item.id}`);
+          // 削除後にさらに更新された（＝削除を上書きする再編集があった）場合のみ残す
+          return !deletedAt || _itemTimestamp(item) > deletedAt;
+        });
+        result[key] = JSON.stringify(merged);
+      } else {
+        result[key] = remoteNewer ? rRaw : lRaw;
+      }
+    }
+    return result;
   }
 
   /* --------------------------------------------------
    * Google Drive API 呼び出し
    * -------------------------------------------------- */
-  async function _driveFetch(url, opts = {}) {
+  function _silentRefresh() {
+    if (!tokenClient) return Promise.resolve(false);
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = new Promise((resolve) => { refreshResolve = resolve; })
+      .finally(() => { refreshPromise = null; });
+    tokenClient.requestAccessToken({ prompt: '' });
+    return refreshPromise;
+  }
+
+  async function _driveFetch(url, opts = {}, retried = false) {
     const res = await fetch(url, {
       ...opts,
       headers: { ...(opts.headers || {}), Authorization: `Bearer ${accessToken}` }
     });
+    if (res.status === 401 && !retried) {
+      // トークン切れ → バックグラウンドで再認証を試みて1回だけリトライ
+      const refreshed = await _silentRefresh();
+      if (refreshed) return _driveFetch(url, opts, true);
+    }
     if (!res.ok) {
       const err = new Error('Drive API error ' + res.status);
       err.status = res.status;
@@ -202,59 +286,95 @@ const Sync = (() => {
     return null;
   }
 
-  async function push() {
-    if (!accessToken) return;
-    const payload = { updatedAt: new Date().toISOString(), data: _collectData() };
+  async function _uploadPayload(fileId, payload) {
     const body = JSON.stringify(payload);
-    const fileId = await _findFileId();
-
     if (fileId) {
       await _driveFetch(
         `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
         { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body }
       );
-    } else {
-      const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', new Blob([body], { type: 'application/json' }));
-      const res = await _driveFetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-        { method: 'POST', body: form }
-      );
-      const json = await res.json();
-      rawSetItem(FILE_ID_KEY, json.id);
+      return fileId;
     }
+    const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([body], { type: 'application/json' }));
+    const res = await _driveFetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+      { method: 'POST', body: form }
+    );
+    const json = await res.json();
+    rawSetItem(FILE_ID_KEY, json.id);
+    return json.id;
+  }
+
+  async function push() {
+    if (!accessToken) return;
+    const payload = { updatedAt: new Date().toISOString(), data: _collectData() };
+    const fileId = await _findFileId();
+    await _uploadPayload(fileId, payload);
     rawSetItem(LOCAL_TS_KEY, payload.updatedAt);
     rawSetItem(LAST_KEY, payload.updatedAt);
     _updateUI();
   }
 
-  async function pullIfNewer() {
+  function mergeSync() {
+    return _mergeAndSync(true);
+  }
+
+  // リモートのデータを取得し、id単位でローカルとマージしてから
+  // 必要な分だけローカルに反映／Driveに書き戻す。
+  async function _mergeAndSync(reload) {
     if (!accessToken) return;
     const fileId = await _findFileId();
-    if (!fileId) { await push(); return; }
+    const localRaw = _collectData();
+
+    if (!fileId) {
+      await push();
+      return;
+    }
 
     const res = await _driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
     const remote = await res.json();
-    const localUpdated = localStorage.getItem(LOCAL_TS_KEY) || '1970-01-01T00:00:00.000Z';
+    const remoteRaw = (remote && remote.data) || {};
+    const localUpdated  = localStorage.getItem(LOCAL_TS_KEY) || '1970-01-01T00:00:00.000Z';
+    const remoteUpdated = remote.updatedAt || '1970-01-01T00:00:00.000Z';
+    const remoteNewer   = remoteUpdated > localUpdated;
 
-    if (remote.updatedAt && remote.updatedAt > localUpdated) {
-      const changed = JSON.stringify(remote.data) !== JSON.stringify(_collectData());
-      _applyRemote(remote);
-      if (changed) location.reload();
-    } else if (localUpdated > (remote.updatedAt || '')) {
-      await push();
+    const merged    = _mergeData(localRaw, remoteRaw, remoteNewer);
+    const mergedStr  = JSON.stringify(merged);
+    const localStr   = JSON.stringify(localRaw);
+    const remoteStr  = JSON.stringify(remoteRaw);
+    const localChanged = mergedStr !== localStr;
+
+    if (localChanged) {
+      suppress = true;
+      try {
+        for (const [k, v] of Object.entries(merged)) {
+          if (localStorage.getItem(k) !== v) rawSetItem(k, v);
+        }
+      } finally {
+        suppress = false;
+      }
+    }
+
+    if (mergedStr !== remoteStr) {
+      const payload = { updatedAt: new Date().toISOString(), data: merged };
+      await _uploadPayload(fileId, payload);
+      rawSetItem(LOCAL_TS_KEY, payload.updatedAt);
+      rawSetItem(LAST_KEY, payload.updatedAt);
     } else {
+      rawSetItem(LOCAL_TS_KEY, remoteUpdated);
       rawSetItem(LAST_KEY, new Date().toISOString());
     }
+
+    if (localChanged && reload) location.reload();
   }
 
   async function syncNow() {
     if (!accessToken) { signIn(); return; }
     try {
-      await pullIfNewer();
-      await push();
+      await mergeSync();
       if (typeof showToast === 'function') showToast('同期しました 🔄');
     } catch (e) {
       console.warn('[Sync] manual sync failed:', e);
@@ -294,5 +414,5 @@ const Sync = (() => {
     }
   }
 
-  return { gisLoaded, signIn, signOut, isSignedIn, push, pullIfNewer, syncNow };
+  return { gisLoaded, signIn, signOut, isSignedIn, push, mergeSync, syncNow };
 })();

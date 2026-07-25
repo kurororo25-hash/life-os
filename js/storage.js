@@ -38,6 +38,20 @@ const Storage = {
   remove(key, id) {
     const items = this.get(key).filter(i => i.id !== id);
     this.set(key, items);
+    this._recordDeletion(key, id);
+  },
+
+  // 削除した項目を記録しておく（同期時のマージで復活させないため）
+  _recordDeletion(key, id) {
+    const TOMBSTONE_KEY = 'life_sync_tombstones';
+    let tombstones = [];
+    try { tombstones = JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '[]'); } catch {}
+    const compoundId = `${key}::${id}`;
+    const now = new Date().toISOString();
+    const idx = tombstones.findIndex(t => t.id === compoundId);
+    const entry = { id: compoundId, targetKey: key, targetId: id, deletedAt: now, updatedAt: now };
+    if (idx >= 0) tombstones[idx] = entry; else tombstones.push(entry);
+    localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(tombstones));
   },
 
   clear(key) {

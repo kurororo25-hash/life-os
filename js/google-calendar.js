@@ -24,6 +24,8 @@ const GCal = (() => {
   let tokenClient = null;
   let accessToken = null;
   let silentRefreshTried = false;
+  let refreshPromise = null;
+  let refreshResolve = null;
 
   /* --------------------------------------------------
    * 初期化
@@ -65,6 +67,7 @@ const GCal = (() => {
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(EXPIRY_KEY);
           _updateUI();
+          if (refreshResolve) { refreshResolve(false); refreshResolve = null; }
           return;
         }
         accessToken = resp.access_token;
@@ -72,9 +75,39 @@ const GCal = (() => {
         localStorage.setItem(TOKEN_KEY, accessToken);
         localStorage.setItem(EXPIRY_KEY, String(Date.now() + (Number(resp.expires_in) || 3600) * 1000));
         _updateUI();
+
+        if (refreshResolve) {
+          // API呼び出し中に検知した401への再試行待ち → 結果を返すだけ（呼び出し元がリトライする）
+          refreshResolve(true);
+          refreshResolve = null;
+          return;
+        }
         renderGCalEvents();
       }
     });
+  }
+
+  // 進行中のサイレント再認証があれば使い回すPromiseベースのヘルパー
+  function _silentRefresh() {
+    if (!tokenClient) return Promise.resolve(false);
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = new Promise((resolve) => { refreshResolve = resolve; })
+      .finally(() => { refreshPromise = null; });
+    tokenClient.requestAccessToken({ prompt: '' });
+    return refreshPromise;
+  }
+
+  // Calendar APIを呼び出し、401（トークン切れ）ならサイレント再認証して1回だけリトライする
+  async function _withAutoRefresh(fn) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e && e.status === 401 && tokenClient) {
+        const refreshed = await _silentRefresh();
+        if (refreshed) return await fn();
+      }
+      throw e;
+    }
   }
 
   function _tryRestoreToken() {
@@ -174,7 +207,7 @@ const GCal = (() => {
     try {
       const now    = new Date().toISOString();
       const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const res = await gapi.client.calendar.events.list({
+      const res = await _withAutoRefresh(() => gapi.client.calendar.events.list({
         calendarId:  'primary',
         timeMin:      now,
         timeMax:      future,
@@ -182,7 +215,7 @@ const GCal = (() => {
         singleEvents: true,
         maxResults:   30,
         orderBy:      'startTime'
-      });
+      }));
       const events = res.result.items || [];
       if (events.length === 0) {
         panel.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:13px">今後30日のイベントはありません</div>';
@@ -201,12 +234,6 @@ const GCal = (() => {
       }).join('');
     } catch (e) {
       console.warn('[GCal] fetch error:', e);
-      if (e.status === 401 && tokenClient && !silentRefreshTried) {
-        // 期限切れ検知 → 一度だけバックグラウンド再認証してから再試行
-        silentRefreshTried = true;
-        tokenClient.requestAccessToken({ prompt: '' });
-        return;
-      }
       if (e.status === 401) {
         accessToken = null;
         localStorage.removeItem(TOKEN_KEY);
@@ -228,7 +255,7 @@ const GCal = (() => {
     for (const r of reminders) {
       try {
         const { start, end } = _buildStartEnd(r.date, r.time);
-        await gapi.client.calendar.events.insert({
+        await _withAutoRefresh(() => gapi.client.calendar.events.insert({
           calendarId: 'primary',
           resource: {
             summary:     r.title,
@@ -236,7 +263,7 @@ const GCal = (() => {
             start,
             end
           }
-        });
+        }));
         ok++;
       } catch (e) {
         console.warn('[GCal] sync error:', e);
@@ -307,7 +334,7 @@ const GCal = (() => {
     if (!accessToken || !reminder.date) return;
     try {
       const { start, end } = _buildStartEnd(reminder.date, reminder.time);
-      const res = await gapi.client.calendar.events.insert({
+      const res = await _withAutoRefresh(() => gapi.client.calendar.events.insert({
         calendarId: 'primary',
         resource: {
           summary:     reminder.title,
@@ -315,7 +342,7 @@ const GCal = (() => {
           start,
           end
         }
-      });
+      }));
       Storage.update('life_reminders', reminder.id, { gcalEventId: res.result.id });
       showToast('Googleカレンダーにも追加しました 📅');
     } catch (e) {
@@ -338,14 +365,14 @@ const GCal = (() => {
     if (!accessToken || !item.date) return;
     try {
       const { start, end } = _buildStartEndRange(item.date, item.startTime, item.endTime);
-      const res = await gapi.client.calendar.events.insert({
+      const res = await _withAutoRefresh(() => gapi.client.calendar.events.insert({
         calendarId: 'primary',
         resource: {
           summary: item.title,
           start,
           end
         }
-      });
+      }));
       Storage.update('life_timebox', item.id, { gcalEventId: res.result.id });
       if (!silent) showToast('Googleカレンダーにも追加しました 📅');
     } catch (e) {
@@ -372,14 +399,14 @@ const GCal = (() => {
     for (const item of items) {
       try {
         const { start, end } = _buildStartEndRange(item.date, item.startTime, item.endTime);
-        const res = await gapi.client.calendar.events.insert({
+        const res = await _withAutoRefresh(() => gapi.client.calendar.events.insert({
           calendarId: 'primary',
           resource: {
             summary: item.title,
             start,
             end
           }
-        });
+        }));
         Storage.update('life_timebox', item.id, { gcalEventId: res.result.id });
         ok++;
       } catch (e) {
