@@ -628,11 +628,10 @@
       const endTime = minToTime(timeToMin(startTime) + SLOT_MIN);
       const wasAdding = !editingId;
 
-      // 新規追加時のみ：スペース区切りで複数入力したら、それぞれ独立した予定として保存する
+      // スペース区切りで複数入力したら、それぞれ独立した予定として保存する
       // 例：「歯磨き 光浴 筋トレ」→ 3件の予定として保存し、それぞれ個別にGoogleカレンダーへ同期
-      const titles = wasAdding
-        ? rawTitle.split(/[\s　]+/).filter(Boolean)
-        : [rawTitle];
+      // 編集時は1件目が編集対象を更新し、2件目以降は同じ時間枠の新規予定として追加される
+      const titles = rawTitle.split(/[\s　]+/).filter(Boolean);
 
       const savedItems = [];
       if (editingId) {
@@ -644,7 +643,16 @@
           done: modalDoneState,
         });
         savedItems.push(saved);
-        showToast('更新しました ✓');
+        titles.slice(1).forEach(title => {
+          savedItems.push(Storage.add(KEY, {
+            date: modalDate,
+            title,
+            startTime,
+            endTime,
+            done: false,
+          }));
+        });
+        showToast(titles.length > 1 ? `更新＋${titles.length - 1}件追加しました ✓` : '更新しました ✓');
       } else {
         titles.forEach(title => {
           savedItems.push(Storage.add(KEY, {
