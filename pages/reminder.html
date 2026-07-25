@@ -239,11 +239,18 @@
     }
 
     async function saveItem() {
-      const title = document.getElementById('fTitle').value.trim();
-      if (!title) { alert('タイトルを入力してください'); return; }
+      const rawTitle = document.getElementById('fTitle').value.trim();
+      if (!rawTitle) { alert('タイトルを入力してください'); return; }
 
-      const data = {
-        title,
+      const wasAdding = !editingId;
+
+      // 新規追加時のみ：スペース区切りで複数入力したら、それぞれ独立したリマインダーとして保存する
+      // 例：「牛乳 卵 米」→ 3件のリマインダーとして保存し、それぞれ個別にGoogleカレンダーへ同期
+      const titles = wasAdding
+        ? rawTitle.split(/[\s　]+/).filter(Boolean)
+        : [rawTitle];
+
+      const base = {
         date:     document.getElementById('fDate').value,
         time:     document.getElementById('fTime').value,
         priority: document.getElementById('fPriority').value,
@@ -252,20 +259,23 @@
         done:     false
       };
 
-      const wasAdding = !editingId;
-      let saved;
+      const savedItems = [];
       if (editingId) {
-        saved = Storage.update(KEY, editingId, data);
+        savedItems.push(Storage.update(KEY, editingId, { ...base, title: titles[0] }));
         showToast('更新しました ✓');
       } else {
-        saved = Storage.add(KEY, data);
-        showToast('追加しました ✓');
+        titles.forEach(title => {
+          savedItems.push(Storage.add(KEY, { ...base, title }));
+        });
+        showToast(titles.length > 1 ? `${titles.length}件追加しました ✓` : '追加しました ✓');
       }
       render();
 
       // Google連動中かつ日付ありなら自動同期
-      if (GCal.isSignedIn() && saved && saved.date) {
-        GCal.syncReminder(saved);
+      if (GCal.isSignedIn()) {
+        savedItems.forEach(saved => {
+          if (saved && saved.date) GCal.syncReminder(saved);
+        });
       }
 
       if (wasAdding) {
