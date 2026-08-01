@@ -12,6 +12,7 @@
   --warning-light: #fef3c7;
   --danger: #ef4444;
   --danger-light: #fee2e2;
+  --warning-text: #92400e;
   --bg: #f2f4f8;
   --card: #ffffff;
   --text: #1e293b;
@@ -22,6 +23,23 @@
   --radius-sm: 8px;
   --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
   --header-h: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary-light: #1c2b4a;
+    --success-light: #113322;
+    --warning-light: #3a2c0d;
+    --danger-light: #3a1414;
+    --warning-text: #fbbf24;
+    --bg: #14161c;
+    --card: #1e2129;
+    --text: #e7e9ee;
+    --text-sub: #a1a7b3;
+    --text-muted: #6b7280;
+    --border: #2c303a;
+    --shadow: 0 1px 4px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

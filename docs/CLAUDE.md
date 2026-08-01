@@ -7,8 +7,8 @@
 ## プロジェクト概要
 
 **名前**: 生活OS  
-**目的**: リマインダー・在庫管理・買い物・メモ・日記など、日常生活の管理をまとめるWebアプリ  
-**公開先**: GitHub Pages（予定）  
+**目的**: リマインダー・タイムボクシング・ライフログ・整備管理・習慣チェックなど、日常生活の管理をまとめるWebアプリ  
+**公開先**: GitHub Pages（公開済み） — `https://kurororo25-hash.github.io/life-os/index.html`  
 **対象端末**: iPhone（ホーム画面に追加してPWA的に使用）＋ Windows 11  
 
 ---
@@ -26,21 +26,25 @@
 
 ```
 life-os/
-├── index.html          ホーム画面（機能カード一覧）
+├── index.html          ホーム画面（機能カード一覧・端末間同期パネル）
 ├── manifest.json       PWA設定（iPhoneホーム画面追加用）
+├── sw.js               Service Worker（通知の表示＋アプリ本体のオフラインキャッシュ）
+├── icon.png / icon-512.png / apple-touch-icon.png  ホーム画面・通知用アイコン
 ├── css/
-│   └── style.css       全ページ共通スタイル
+│   └── style.css       全ページ共通スタイル（ダークモード対応込み）
 ├── js/
-│   ├── storage.js      localStorage読み書き共通関数
-│   └── common.js       全ページ共通ユーティリティ（toast・日付・削除確認など）
+│   ├── storage.js          localStorage読み書き共通関数
+│   ├── common.js           全ページ共通ユーティリティ（toast・日付・削除確認など）
+│   ├── sync.js             PC・iPhone間のGoogleドライブ経由データ同期
+│   ├── google-calendar.js  リマインダー・タイムボクシングのGoogleカレンダー連携
+│   └── notifications.js    Service Worker登録・リマインダー期限の通知チェック
 ├── pages/
-│   ├── timebox.html    タイムボクシング
-│   ├── lifelog.html    ライフログ（一日の振り返り）
-│   ├── reminder.html   リマインダー
-│   ├── appliance.html  家電メモ
-│   ├── cleaning.html   掃除手順
-│   └── laundry.html    洗濯手順
-└── docs/               説明ドキュメント群
+│   ├── reminder.html    リマインダー（todoリスト形式）
+│   ├── timebox.html     タイムボクシング
+│   ├── lifelog.html     ライフログ（一日の振り返り）
+│   ├── maintenance.html 整備管理（車）
+│   └── habit.html       習慣チェック
+└── docs/                説明ドキュメント群
 ```
 
 ---
@@ -49,12 +53,14 @@ life-os/
 
 | キー名 | 使用ページ | 主な項目 |
 |--------|-----------|---------|
-| `life_timebox`       | timebox.html    | date, title, startTime, endTime（30分固定）, done, gcalEventId |
-| `life_lifelog`       | lifelog.html    | date, title, startTime, endTime（自由な長さ）, mood, notes |
-| `life_reminders`     | reminder.html   | title, date, repeat, priority, done, notes |
-| `life_appliances`    | appliance.html  | name, maker, model, location, purchase, warranty, price, notes |
-| `life_cleaning`      | cleaning.html   | title, freq, time, steps[], tools, notes |
-| `life_laundry`       | laundry.html    | title, course, temp, steps[], detergent, target, notes |
+| `life_reminders`        | reminder.html    | title, date, time, repeat, priority, done, notes, gcalEventId |
+| `life_timebox`          | timebox.html     | date, title, startTime, endTime（30分固定）, done, gcalEventId |
+| `life_lifelog`          | lifelog.html     | date, title, startTime, endTime（自由な長さ）, mood, notes |
+| `life_maintenance`      | maintenance.html | name, lastDate, nextDate, nextKm, notes |
+| `life_maintenance_meta` | maintenance.html | mileage（現在の走行距離） |
+| `life_habit_habits`     | habit.html       | id, name, period（朝/夜など） |
+| `life_habit`            | habit.html       | date, checks（habit id → true/false） |
+| `life_sync_tombstones`  | 全ページ共通     | 同期時に削除をマージへ反映するための削除記録（Storage.remove/restoreが管理） |
 
 ---
 
@@ -77,7 +83,7 @@ life-os/
 - localStorage はブラウザごと・端末ごとに独立している（iPhoneとPCはデータが別）
 - HTTPS 環境でのみ PWA として動作する（GitHub Pages は HTTPS なので問題なし）
 - APIキーやパスワードはファイルに書かない
-- icon.png は現時点では未作成。GitHub Pages に上げる前に作成が必要（なくても動くが、ホーム画面追加時のアイコンが空になる）
+- Service Worker（sw.js）はアプリ本体一式をキャッシュしてオフライン対応している。ファイル構成を変えたら `sw.js` 内の `CACHE_VERSION` を上げること（上げないと古いキャッシュが残り続ける）
 
 ---
 
@@ -85,6 +91,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-08-01 | 欠けていた icon.png（192/512px）・apple-touch-icon.png を作成し manifest.json / index.html に反映。CSS変数のダーク値を `prefers-color-scheme: dark` で上書きするダークモード対応を追加（habit.htmlの背景白固定バグ・GCal注意書きの文字色固定も合わせて修正）。sw.js にアプリ本体一式のプリキャッシュを追加し、オフラインでも開けるように変更。docs（本ファイル・今後やること.md）を実装済み項目に合わせて更新 |
 | 2026-07-26 | リマインダー・タイムボクシングのスペース区切り一括追加を編集モーダルでも使えるように拡張（1件目が編集対象を更新、2件目以降は新規追加） |
 | 2026-07-26 | リマインダー（reminder.html）に、タイムボクシングと同じスペース区切り一括追加を実装（新規追加時のみタイトルを空白で分割し、それぞれ独立したリマインダーとして保存） |
 | 2026-07-26 | リマインダー（reminder.html）をtodoリストとして改善。日付グループ表示（期限切れ/今日/明日/今週/それ以降/未定）、タブ件数、日付順/優先度順の並び替え、クイック日付ボタン、スワイプ削除＋元に戻すトーストを追加。common.js/storage.js に共通の showToast アクションボタン・Storage.restore を追加 |
