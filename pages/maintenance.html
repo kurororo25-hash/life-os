@@ -18,9 +18,14 @@
         <div>
           <div style="font-size:12px;color:var(--text-sub, #888)">🚗 現在の走行距離</div>
           <div style="font-size:20px;font-weight:700" id="mileageDisplay">未設定</div>
+          <div style="font-size:11px;color:var(--text-sub, #888)" id="mileageUpdatedAt"></div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="editMileage()">✏️ 更新</button>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-ghost" onclick="toggleMileageLog()">📜 履歴</button>
+          <button class="btn btn-sm btn-ghost" onclick="editMileage()">✏️ 更新</button>
+        </div>
       </div>
+      <div id="mileageLogContainer" class="hidden" style="padding:0 16px 12px"></div>
     </div>
 
     <div id="listContainer"></div>
@@ -93,8 +98,9 @@
   <script async defer src="https://accounts.google.com/gsi/client"
           onload="Sync.gisLoaded()"></script>
   <script>
-    const KEY      = 'life_maintenance';
-    const META_KEY = 'life_maintenance_meta';
+    const KEY           = 'life_maintenance';
+    const META_KEY      = 'life_maintenance_meta';
+    const MILEAGE_LOG_KEY = 'life_mileage_log';
     let editingId  = null;
 
     // 項目名の候補（一般的な軽自動車・バンでよくある整備項目）
@@ -149,9 +155,11 @@
       if (val === null) return;
       const num = parseInt(val);
       if (isNaN(num) || num < 0) { alert('正しい数値を入力してください'); return; }
-      setMeta({ mileage: num, updatedAt: new Date().toISOString() });
+      const entry = Storage.add(MILEAGE_LOG_KEY, { mileage: num });
+      setMeta({ mileage: num, updatedAt: entry.createdAt });
       showToast('走行距離を更新しました ✓');
       renderMileage();
+      renderMileageLog();
       render();
     }
 
@@ -159,6 +167,59 @@
       const meta = getMeta();
       const el = document.getElementById('mileageDisplay');
       el.textContent = meta.mileage != null ? `${meta.mileage.toLocaleString()} km` : '未設定';
+      document.getElementById('mileageUpdatedAt').textContent =
+        meta.updatedAt ? `更新: ${formatDateTime(meta.updatedAt)}` : '';
+    }
+
+    // 既存ユーザーは履歴が空でも現在値があるので、初回だけ1件分を履歴として補完する
+    function ensureMileageLogSeed() {
+      const log = Storage.get(MILEAGE_LOG_KEY);
+      const meta = getMeta();
+      if (log.length === 0 && meta.mileage != null) {
+        log.unshift({
+          mileage: meta.mileage,
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          createdAt: meta.updatedAt || new Date().toISOString()
+        });
+        Storage.set(MILEAGE_LOG_KEY, log);
+      }
+    }
+
+    function toggleMileageLog() {
+      const container = document.getElementById('mileageLogContainer');
+      container.classList.toggle('hidden');
+      if (!container.classList.contains('hidden')) renderMileageLog();
+    }
+
+    function renderMileageLog() {
+      const container = document.getElementById('mileageLogContainer');
+      const log = Storage.get(MILEAGE_LOG_KEY);
+
+      if (log.length === 0) {
+        container.innerHTML = `<div style="font-size:12px;color:var(--text-sub, #888);padding:8px 0">記録はまだありません</div>`;
+        return;
+      }
+
+      const sorted = [...log].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      let html = '<div style="border-top:1px solid var(--border, #eee);margin-top:4px">';
+      sorted.forEach(entry => {
+        html += `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border, #f0f0f0)">
+            <span style="color:var(--text-sub, #888)">${formatDateTime(entry.createdAt)}</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <strong>${Number(entry.mileage).toLocaleString()} km</strong>
+              <button class="btn-icon" onclick="deleteMileageLogEntry('${entry.id}')">🗑️</button>
+            </span>
+          </div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function deleteMileageLogEntry(id) {
+      if (!confirmDelete('この走行距離の記録を削除しますか？')) return;
+      Storage.remove(MILEAGE_LOG_KEY, id);
+      renderMileageLog();
     }
 
     // 年→月→日のセレクトで日付を入力する（選ぶと自動的に次のセレクトへフォーカス移動）
@@ -396,6 +457,7 @@
     initPresetSelect();
     buildDateSelect('fLastDate');
     buildDateSelect('fNextDate');
+    ensureMileageLogSeed();
     renderMileage();
     render();
   </script>
