@@ -76,6 +76,11 @@
       <span class="card-label">習慣チェック</span>
       <span class="card-badge" id="badgeHabit"></span>
     </a>
+    <a href="pages/monthly.html" class="feature-card">
+      <span class="card-icon">🗓️</span>
+      <span class="card-label">月次チェック</span>
+      <span class="card-badge" id="badgeMonthly"></span>
+    </a>
   </main>
 
   <script src="js/storage.js"></script>
@@ -143,6 +148,25 @@
           const done = Object.values(habit.checks).filter(Boolean).length;
           const remaining = total - done;
           if (remaining > 0) showBadge('badgeHabit', remaining);
+        }
+      }
+    } catch {}
+
+    // 月次チェック：今月の未完了件数
+    try {
+      const monthlyTasksRaw = localStorage.getItem('life_monthly_tasks');
+      const monthlyStateRaw = localStorage.getItem('life_monthly');
+      if (monthlyTasksRaw && monthlyStateRaw) {
+        const monthlyTasks = JSON.parse(monthlyTasksRaw);
+        const monthlyState = JSON.parse(monthlyStateRaw);
+        const thisMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        if (monthlyState.month === thisMonth) {
+          const done = monthlyTasks.filter(t => monthlyState.checks[t.id]).length;
+          const remaining = monthlyTasks.length - done;
+          if (remaining > 0) showBadge('badgeMonthly', remaining);
+        } else if (monthlyTasks.length > 0) {
+          // まだ今月分が初期化されていない＝全件未完了
+          showBadge('badgeMonthly', monthlyTasks.length);
         }
       }
     } catch {}

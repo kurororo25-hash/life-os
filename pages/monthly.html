@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>月次チェック - 生活OS</title>
+  <link rel="manifest" href="../manifest.json">
+  <link rel="stylesheet" href="../css/style.css">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    .progress-wrap {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px 16px;
+    }
+
+    .progress-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .progress-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-sub);
+    }
+
+    .progress-count {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .progress-bar-bg {
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), #7aa8ff);
+      border-radius: 99px;
+      transition: width 0.35s ease;
+    }
+
+    .all-done-banner {
+      background: var(--success-light);
+      color: var(--success);
+      text-align: center;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      border-bottom: 1px solid #bbf7d0;
+      display: none;
+    }
+
+    .section-header {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      padding: 16px 16px 6px;
+    }
+
+    .section-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin: 0 16px 12px;
+    }
+
+    .section-wrap { display: block; }
+    .section-wrap.empty { display: none; }
+
+    .habit-row {
+      display: flex;
+      align-items: center;
+      background: var(--card);
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      transition: background 0.1s;
+      gap: 14px;
+    }
+
+    .habit-row:active { background: rgba(128,128,128,0.08); }
+    .habit-row:last-child { border-bottom: none; }
+
+    .habit-check {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .done-row .habit-check {
+      background: var(--success);
+      border-color: var(--success);
+    }
+
+    .check-icon {
+      display: none;
+      color: white;
+      font-size: 14px;
+      line-height: 1;
+      margin-top: -1px;
+    }
+
+    .done-row .check-icon { display: block; }
+
+    .habit-label {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .done-row .habit-label {
+      color: var(--text-muted);
+      text-decoration: line-through;
+    }
+
+    .done-section-header {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--success);
+      letter-spacing: 0.08em;
+      padding: 16px 16px 6px;
+    }
+
+    .edit-toggle-btn.active-edit {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .reorder-btns {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .reorder-btn {
+      width: 30px;
+      height: 22px;
+      font-size: 11px;
+      padding: 0;
+      color: var(--text-sub);
+    }
+
+    .reorder-btn:disabled {
+      opacity: 0.25;
+      cursor: default;
+    }
+
+    .empty-section-msg {
+      padding: 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .next-reset-note {
+      padding: 0 16px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="page-header">
+    <button class="back-btn" onclick="history.back()">← 戻る</button>
+    <h1>月次チェック</h1>
+    <button class="btn-icon edit-toggle-btn" id="editToggleBtn" onclick="toggleEditMode()">✏️</button>
+  </header>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-top">
+      <span class="progress-text" id="progressDate"></span>
+      <span class="progress-count" id="progressCount"></span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="all-done-banner" id="allDoneBanner">🎉 今月のタスク全部完了！</div>
+
+  <main class="page-main" style="padding-top:12px;">
+
+    <div class="section-wrap" id="wrapPending">
+      <div class="section-header">📅 今月のタスク</div>
+      <div class="section-card" id="pendingList"></div>
+    </div>
+
+    <div class="section-wrap empty" id="wrapDone">
+      <div class="done-section-header">✅ 完了</div>
+      <div class="section-card" id="doneList"></div>
+    </div>
+
+    <div class="next-reset-note">毎月1日に自動でリセットされます</div>
+
+  </main>
+
+  <button class="fab" id="addFab" onclick="openAddModal()">＋</button>
+
+  <!-- 追加・編集モーダル -->
+  <div class="modal-overlay hidden" id="monthlyModalOverlay" onclick="monthlyOverlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span id="monthlyModalTitle">タスクを追加</span>
+        <button class="btn-icon" onclick="closeMonthlyModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">タスク名 ＊</label>
+        <input type="text" class="form-input" id="fMonthlyLabel" placeholder="例：家賃の振込・クレジットカードの請求書確認"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();saveMonthlyModal();}">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="monthlyModalCancelBtn" onclick="closeMonthlyModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveMonthlyModal()">保存する</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script src="../js/sync.js"></script>
+  <script async defer src="https://accounts.google.com/gsi/client"
+          onload="Sync.gisLoaded()"></script>
+  <script>
+    const TASKS_KEY  = 'life_monthly_tasks';
+    const CHECKS_KEY = 'life_monthly';
+
+    function monthStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    }
+
+    function genId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    function loadTasks() {
+      try {
+        const raw = localStorage.getItem(TASKS_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      return null;
+    }
+
+    function saveTasks(t) {
+      localStorage.setItem(TASKS_KEY, JSON.stringify(t));
+    }
+
+    function seedTasks() {
+      const mk = label => ({ id: genId(), label });
+      return ['家賃・ローンの振込', 'クレジットカード請求書の確認', '口座残高チェック', '公共料金の支払い確認'].map(mk);
+    }
+
+    let tasks = loadTasks();
+    if (!tasks) {
+      tasks = seedTasks();
+      saveTasks(tasks);
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(CHECKS_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch { return null; }
+    }
+
+    function saveState(s) {
+      localStorage.setItem(CHECKS_KEY, JSON.stringify(s));
+    }
+
+    function freshState() {
+      return { month: monthStr(), checks: {} };
+    }
+
+    let state = loadState();
+    if (!state || state.month !== monthStr()) {
+      state = freshState();
+      saveState(state);
+    }
+
+    let editMode = false;
+    let editingTaskId = null;
+
+    function toggleEditMode() {
+      editMode = !editMode;
+      const btn = document.getElementById('editToggleBtn');
+      btn.textContent = editMode ? '完了' : '✏️';
+      btn.classList.toggle('active-edit', editMode);
+      render();
+    }
+
+    function openAddModal() {
+      editingTaskId = null;
+      document.getElementById('monthlyModalTitle').textContent = 'タスクを追加';
+      document.getElementById('monthlyModalCancelBtn').textContent = '終了';
+      document.getElementById('fMonthlyLabel').value = '';
+      document.getElementById('monthlyModalOverlay').classList.remove('hidden');
+      setTimeout(() => document.getElementById('fMonthlyLabel').focus(), 120);
+    }
+
+    function openEditTaskModal(id) {
+      const t = tasks.find(x => x.id === id);
+      if (!t) return;
+      editingTaskId = id;
+      document.getElementById('monthlyModalTitle').textContent = 'タスクを編集';
+      document.getElementById('monthlyModalCancelBtn').textContent = 'キャンセル';
+      document.getElementById('fMonthlyLabel').value = t.label;
+      document.getElementById('monthlyModalOverlay').classList.remove('hidden');
+    }
+
+    function closeMonthlyModal() {
+      document.getElementById('monthlyModalOverlay').classList.add('hidden');
+      editingTaskId = null;
+    }
+
+    function monthlyOverlayClick(e) {
+      if (e.target === document.getElementById('monthlyModalOverlay')) closeMonthlyModal();
+    }
+
+    function saveMonthlyModal() {
+      const label = document.getElementById('fMonthlyLabel').value.trim();
+      if (!label) { alert('タスク名を入力してください'); return; }
+      const wasAdding = !editingTaskId;
+
+      if (editingTaskId) {
+        const item = tasks.find(t => t.id === editingTaskId);
+        if (!item) return;
+        item.label = label;
+        showToast('更新しました ✓');
+      } else {
+        tasks.push({ id: genId(), label });
+        showToast('追加しました ✓');
+      }
+      saveTasks(tasks);
+      render();
+
+      if (wasAdding) {
+        document.getElementById('fMonthlyLabel').value = '';
+        setTimeout(() => document.getElementById('fMonthlyLabel').focus(), 50);
+      } else {
+        closeMonthlyModal();
+      }
+    }
+
+    function deleteTask(id) {
+      if (!confirmDelete('このタスクを削除しますか？')) return;
+      tasks = tasks.filter(t => t.id !== id);
+      delete state.checks[id];
+      saveTasks(tasks);
+      saveState(state);
+      render();
+    }
+
+    function moveTask(id, dir) {
+      const idx = tasks.findIndex(t => t.id === id);
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= tasks.length) return;
+      [tasks[idx], tasks[newIdx]] = [tasks[newIdx], tasks[idx]];
+      saveTasks(tasks);
+      render();
+    }
+
+    function makeRow(task, isDone) {
+      const row = document.createElement('div');
+      row.className = 'habit-row' + (isDone ? ' done-row' : '');
+      row.innerHTML = `<div class="habit-check"><span class="check-icon">✓</span></div><div class="habit-label">${esc(task.label)}</div>`;
+      row.addEventListener('click', () => {
+        state.checks[task.id] = !state.checks[task.id];
+        saveState(state);
+        render();
+      });
+      return row;
+    }
+
+    function makeEditRow(task, isFirst, isLast) {
+      const row = document.createElement('div');
+      row.className = 'habit-row';
+      row.innerHTML = `
+        <div class="reorder-btns">
+          <button class="btn-icon reorder-btn" ${isFirst ? 'disabled' : ''}>▲</button>
+          <button class="btn-icon reorder-btn" ${isLast ? 'disabled' : ''}>▼</button>
+        </div>
+        <div class="habit-label">${esc(task.label)}</div>
+        <button class="btn-icon delete-habit-btn">🗑️</button>`;
+      const [upBtn, downBtn] = row.querySelectorAll('.reorder-btn');
+      upBtn.addEventListener('click', e => { e.stopPropagation(); moveTask(task.id, -1); });
+      downBtn.addEventListener('click', e => { e.stopPropagation(); moveTask(task.id, 1); });
+      row.querySelector('.habit-label').addEventListener('click', () => openEditTaskModal(task.id));
+      row.querySelector('.delete-habit-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        deleteTask(task.id);
+      });
+      return row;
+    }
+
+    function renderEditSection(el, list) {
+      el.innerHTML = '';
+      if (list.length === 0) {
+        el.innerHTML = '<div class="empty-section-msg">タスクがありません</div>';
+        return;
+      }
+      list.forEach((t, i) => {
+        el.appendChild(makeEditRow(t, i === 0, i === list.length - 1));
+      });
+    }
+
+    function render() {
+      document.getElementById('progressWrap').style.display = editMode ? 'none' : '';
+      document.getElementById('wrapDone').style.display = editMode ? 'none' : '';
+
+      const pendingEl = document.getElementById('pendingList');
+      const doneEl    = document.getElementById('doneList');
+
+      if (editMode) {
+        renderEditSection(pendingEl, tasks);
+        doneEl.innerHTML = '';
+        document.getElementById('wrapPending').classList.remove('empty');
+        document.getElementById('allDoneBanner').style.display = 'none';
+        return;
+      }
+
+      pendingEl.innerHTML = '';
+      doneEl.innerHTML    = '';
+
+      const pending = [];
+      const done = [];
+
+      tasks.forEach(task => {
+        if (state.checks[task.id]) {
+          done.push(task);
+        } else {
+          pending.push(task);
+        }
+      });
+
+      pending.forEach(t => pendingEl.appendChild(makeRow(t, false)));
+      done.forEach(t => doneEl.appendChild(makeRow(t, true)));
+
+      document.getElementById('wrapPending').classList.toggle('empty', pending.length === 0);
+      document.getElementById('wrapDone').classList.toggle('empty', done.length === 0);
+
+      const total = tasks.length;
+      const doneCount = done.length;
+      const pct = total === 0 ? 0 : Math.round(doneCount / total * 100);
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressCount').textContent = `${doneCount} / ${total}`;
+      document.getElementById('allDoneBanner').style.display = (total > 0 && doneCount === total) ? 'block' : 'none';
+    }
+
+    const now = new Date();
+    document.getElementById('progressDate').textContent = `${now.getFullYear()}年${now.getMonth()+1}月`;
+
+    render();
+  </script>
+</body>
+</html>

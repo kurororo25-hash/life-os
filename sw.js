@@ -4,7 +4,7 @@
  * ファイル構成を変えたら CACHE_VERSION を上げると古いキャッシュが破棄される。
  */
 
-const CACHE_VERSION = 'life-os-v1';
+const CACHE_VERSION = 'life-os-v2';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
@@ -20,6 +20,7 @@ const APP_SHELL = [
   './pages/lifelog.html',
   './pages/maintenance.html',
   './pages/habit.html',
+  './pages/monthly.html',
 ];
 
 self.addEventListener('install', e => {
