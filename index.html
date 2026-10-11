@@ -114,7 +114,7 @@
     }
 
     // リマインダー：今日以前の未完了件数
-    const todayStr = new Date().toISOString().slice(0,10);
+    const todayStr = today();
     const reminders = Storage.get('life_reminders');
     const pendingReminders = reminders.filter(r => !r.done && r.date && r.date <= todayStr);
     showBadge('badgeReminder', pendingReminders.length);

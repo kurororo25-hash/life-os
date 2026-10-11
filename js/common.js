@@ -50,8 +50,13 @@ function formatDateTime(isoStr) {
   return `${mm}/${dd} ${hh}:${mi}`;
 }
 
+// Date → 'YYYY-MM-DD'（端末のローカル日付）。toISOString() はUTCなので日本時間0〜9時に前日になる点に注意
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr(new Date());
 }
 
 function confirmDelete(msg) {

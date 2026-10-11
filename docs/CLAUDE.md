@@ -90,6 +90,7 @@ life-os/
 ## 注意事項
 
 - `data/anki-stats.json` は自動commitされるので、手作業のcommitと競合しないよう anki_export.py はこのファイルだけを `git commit -- data/anki-stats.json` で commit する
+- 日付文字列（YYYY-MM-DD）は `toISOString()` で作らない（UTCなので日本時間0〜9時に前日になる）。common.js の `today()` / `localDateStr(d)` を使う
 - localStorage はブラウザごと・端末ごとに独立している（iPhoneとPCはデータが別）
 - HTTPS 環境でのみ PWA として動作する（GitHub Pages は HTTPS なので問題なし）
 - APIキーやパスワードはファイルに書かない
@@ -101,6 +102,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-10-11 | 日付バグ修正：`toISOString().slice(0,10)`（UTC）で日付を作っていた箇所を `localDateStr()`（common.js に追加）に統一。日本時間0〜9時に「今日」が前日になる・リマインダーの毎日繰り返しが進まない問題を解消。毎月繰り返しの月末溢れ（1/31→3/3）も月末に丸めるよう修正。sw.js v4 |
 | 2026-10-11 | Anki進捗（anki.html）を追加。データはPC側の `tools/anki_export.py` がAnkiConnectから集計して `data/anki-stats.json` をpushし、ページはそれをfetchして表示（iPhoneでも閲覧可）。Windowsタスク「生活OS_Anki進捗更新」で1時間おき＋ログオン時に実行。Anki未起動ならログだけ残して静かに終了。目標回数 `life_anki_goal` は同期対象。sw.js CACHE_VERSION v3 |
 | 2026-08-16 | 月次チェック（monthly.html）を追加。habit.htmlと同じUI・ロジック（追加・編集・削除・並び替え・進捗バー）だが、リセット単位が「日」ではなく「月」（保存している`month`がYYYY-MM形式で、開いた月と違えばチェックを空にリセット）。振込・請求書確認・口座残高チェックなど毎月やることの管理用。初期タスクは「家賃・ローンの振込」「クレジットカード請求書の確認」「口座残高チェック」「公共料金の支払い確認」を仮登録（自由に編集・削除可）。ホーム画面にカード＋未完了件数バッジを追加、sw.jsのプリキャッシュ対象にも追加してCACHE_VERSIONをv2に更新 |
 | 2026-08-01 | 欠けていた icon.png（192/512px）・apple-touch-icon.png を作成し manifest.json / index.html に反映。CSS変数のダーク値を `prefers-color-scheme: dark` で上書きするダークモード対応を追加（habit.htmlの背景白固定バグ・GCal注意書きの文字色固定も合わせて修正）。sw.js にアプリ本体一式のプリキャッシュを追加し、オフラインでも開けるように変更。docs（本ファイル・今後やること.md）を実装済み項目に合わせて更新 |

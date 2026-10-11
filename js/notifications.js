@@ -51,7 +51,7 @@ const Notif = {
     if (Date.now() - lastShown < this.COOLDOWN_MS) return;
 
     const now     = new Date();
-    const today   = now.toISOString().slice(0, 10);
+    const today   = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;  // ローカル日付（UTCだと0〜9時に前日になる）
     const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
     const all     = JSON.parse(localStorage.getItem('life_reminders') || '[]');
 
