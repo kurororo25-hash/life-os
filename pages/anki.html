@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Anki進捗 - 生活OS</title>
+  <link rel="manifest" href="../manifest.json">
+  <link rel="stylesheet" href="../css/style.css">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    body { background: var(--bg); }
+
+    .section-title {
+      font-size: 12px; font-weight: 700; color: var(--text-muted);
+      letter-spacing: 0.08em; margin: 20px 4px 8px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title .spacer { flex: 1; }
+
+    /* 今日のヒーロー */
+    .hero { padding: 18px 18px 16px; }
+    .hero-top { display: flex; align-items: flex-end; gap: 10px; }
+    .hero-label { font-size: 13px; font-weight: 700; color: var(--text-sub); }
+    .hero-num { font-size: 52px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .hero-unit { font-size: 15px; font-weight: 700; color: var(--text-sub); padding-bottom: 6px; }
+    .hero-streak { margin-left: auto; text-align: right; }
+    .hero-streak b { font-size: 22px; font-variant-numeric: tabular-nums; }
+    .hero-streak span { display: block; font-size: 11px; color: var(--text-sub); font-weight: 600; }
+
+    .goal-row { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 6px; font-size: 13px; font-weight: 700; color: var(--text-sub); }
+    .goal-row button { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; font-family: inherit; }
+    .goal-bar { height: 10px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .goal-fill { height: 100%; background: var(--primary); border-radius: 99px; transition: width 0.4s ease; }
+    .goal-fill.done { background: var(--success); }
+    .goal-msg { font-size: 13px; font-weight: 700; margin-top: 8px; }
+    .goal-msg.done { color: var(--success); }
+
+    .hero-sub { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+    .mini { background: var(--bg); border-radius: var(--radius-sm); padding: 8px 10px; }
+    .mini b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+    .mini span { font-size: 11px; color: var(--text-sub); font-weight: 600; }
+
+    /* 集計タイル */
+    .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    @media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+    .tile { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; }
+    .tile span { font-size: 12px; color: var(--text-sub); font-weight: 700; }
+    .tile b { display: block; font-size: 22px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .tile small { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+    /* グラフ */
+    .chart-card { padding: 14px 12px 10px; }
+    .chart-wrap { position: relative; }
+    .chart-wrap svg { display: block; width: 100%; overflow: visible; }
+    .axis-text { font-size: 10px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .grid-line { stroke: var(--border); stroke-width: 1; }
+    .goal-line { stroke: var(--text-sub); stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .goal-text { font-size: 10px; font-weight: 700; fill: var(--text-sub); paint-order: stroke; stroke: var(--card); stroke-width: 3px; }
+    .bar { fill: var(--primary); }
+    .bar.dim { opacity: 0.35; }
+    .bar-hit { fill: transparent; cursor: pointer; }
+    .val-text { font-size: 10px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+
+    .seg { display: inline-flex; background: var(--bg); border-radius: 8px; padding: 2px; }
+    .seg button { border: none; background: none; font-family: inherit; font-size: 12px; font-weight: 700; color: var(--text-sub); padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+    .seg button.on { background: var(--card); color: var(--primary); box-shadow: var(--shadow); }
+
+    /* ヒートマップ */
+    .heat-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+    .heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 3px; width: max-content; }
+    .heat i { border-radius: 3px; background: var(--border); cursor: pointer; }
+    .heat i.l1, .heat-legend i.l1 { background: color-mix(in srgb, var(--primary) 25%, var(--border)); }
+    .heat i.l2, .heat-legend i.l2 { background: color-mix(in srgb, var(--primary) 50%, var(--border)); }
+    .heat i.l3, .heat-legend i.l3 { background: color-mix(in srgb, var(--primary) 75%, var(--border)); }
+    .heat i.l4, .heat-legend i.l4 { background: var(--primary); }
+    .heat i.future { visibility: hidden; }
+    .heat i.today { outline: 2px solid var(--text); outline-offset: 1px; }
+    .heat-months span { white-space: nowrap; overflow: visible; }
+    .heat-months { display: grid; grid-auto-flow: column; grid-auto-columns: 15px; font-size: 10px; color: var(--text-muted); height: 14px; width: max-content; }
+    .heat-legend { display: flex; align-items: center; gap: 3px; justify-content: flex-end; font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+    .heat-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+    /* デッキ別 */
+    .deck-row { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: default; }
+    .deck-row:last-child { border-bottom: none; }
+    .deck-top { display: flex; gap: 8px; font-size: 13px; font-weight: 600; }
+    .deck-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .deck-name small { color: var(--text-muted); font-weight: 500; }
+    .deck-num { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .deck-pct { color: var(--text-muted); font-size: 12px; width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+    .deck-bar { height: 6px; background: var(--bg); border-radius: 99px; margin-top: 6px; overflow: hidden; }
+    .deck-bar div { height: 100%; background: var(--primary); border-radius: 99px; }
+
+    .tooltip {
+      position: fixed; z-index: 300; pointer-events: none;
+      background: var(--text); color: var(--card);
+      font-size: 12px; font-weight: 600; line-height: 1.5;
+      padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: none;
+    }
+
+    .footer-note { font-size: 12px; color: var(--text-muted); text-align: center; margin: 22px 8px 0; line-height: 1.7; }
+    .stale { background: var(--warning-light); color: var(--warning-text); font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 12px; }
+    .muted-empty { padding: 18px; text-align: center; color: var(--text-muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <button class="back-btn" onclick="history.back()">← 戻る</button>
+    <h1>Anki進捗</h1>
+    <button class="btn-icon" onclick="load(true)" title="再読み込み">🔄</button>
+  </header>
+
+  <main class="page-main" id="main">
+    <div class="muted-empty">読み込み中…</div>
+  </main>
+
+  <div class="tooltip" id="tip"></div>
+
+  <script src="../js/storage.js"></script>
+  <script src="../js/common.js"></script>
+  <script src="../js/sync.js"></script>
+  <script async defer src="https://accounts.google.com/gsi/client"
+          onload="Sync.gisLoaded()"></script>
+  <script>
+    // データは PC の tools/anki_export.py が Anki から集計して data/anki-stats.json に書き出し、GitHubにpushしたもの
+    const GOAL_KEY = 'life_anki_goal';   // life_ 接頭辞なので端末間同期の対象
+    const UI_KEY = 'anki_page_ui';       // 表示切替の記憶（端末ごと）
+    let D = null;                        // 読み込んだJSON
+    let ui = { range: 30, deckRange: 7, deckMode: 'leaf' };
+    try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY) || '{}')); } catch {}
+    const saveUi = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch {} };
+
+    // ---------- 日付ユーティリティ（端末のローカル日付で扱う） ----------
+    const pad = n => String(n).padStart(2, '0');
+    const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const parse = s => new Date(s + 'T00:00:00');
+    const DOW = '日月火水木金土';
+    const md = s => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}（${DOW[d.getDay()]}）`; };
+    const num = n => Number(n || 0).toLocaleString('ja-JP');
+    const hm = sec => {
+      const m = Math.round((sec || 0) / 60);
+      return m < 60 ? `${m}分` : `${Math.floor(m / 60)}時間${m % 60 ? (m % 60) + '分' : ''}`;
+    };
+    // Ankiの「今日」は日付変更時刻（rolloverHour）基準
+    function ankiToday() {
+      return ymd(new Date(Date.now() - (D?.rolloverHour || 0) * 3600e3));
+    }
+
+    function getGoal() {
+      const g = parseInt(localStorage.getItem(GOAL_KEY), 10);
+      return g > 0 ? g : 500;
+    }
+
+    async function load(force) {
+      try {
+        const res = await fetch('../data/anki-stats.json?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) throw new Error(res.status);
+        D = await res.json();
+        D.count = Object.fromEntries(D.history);
+        render();
+        if (force) showToast('最新のデータを読み込みました');
+      } catch (e) {
+        document.getElementById('main').innerHTML =
+          `<div class="muted-empty">データを読み込めませんでした（${esc(String(e.message || e))}）。<br>PCで tools/anki_export.py を一度実行してください。</div>`;
+      }
+    }
+
+    // ---------- 集計 ----------
+    function sumRange(from, to) {   // from〜to（含む）の実践数合計
+      let s = 0;
+      for (const [d, c] of D.history) if (d >= from && d <= to) s += c;
+      return s;
+    }
+    function streak(todayStr) {
+      let d = parse(todayStr);
+      if (!D.count[todayStr]) d = addDays(d, -1);   // 今日まだでも昨日まで続いていれば継続扱い
+      let n = 0;
+      while (D.count[ymd(d)] > 0) { n++; d = addDays(d, -1); }
+      return n;
+    }
+    function bestStreak() {
+      let best = 0, cur = 0, prev = null;
+      for (const [d, c] of D.history) {
+        if (c <= 0) continue;
+        cur = (prev && ymd(addDays(parse(prev), 1)) === d) ? cur + 1 : 1;
+        best = Math.max(best, cur); prev = d;
+      }
+      return best;
+    }
+
+    // ---------- 描画 ----------
+    function render() {
+      const t = ankiToday();
+      const goal = getGoal();
+      const todayN = D.count[t] || 0;
+      const det = D.daily[t] || {};
+      const answered = (det.again || 0) + (det.hard || 0) + (det.good || 0) + (det.easy || 0);
+      const acc = answered ? Math.round((answered - det.again) / answered * 100) : null;
+      const st = streak(t);
+      const pct = Math.min(100, todayN / goal * 100);
+      const done = todayN >= goal;
+
+      const weekStart = ymd(addDays(parse(t), -((parse(t).getDay() + 6) % 7)));   // 月曜始まり
+      const monthStart = t.slice(0, 8) + '01';
+      const last30 = sumRange(ymd(addDays(parse(t), -29)), t);
+      const prev30 = sumRange(ymd(addDays(parse(t), -59)), ymd(addDays(parse(t), -30)));
+      const total = D.history.reduce((s, [, c]) => s + c, 0);
+      const best = D.history.reduce((b, x) => x[1] > b[1] ? x : b, ['', 0]);
+      const diff30 = prev30 ? Math.round((last30 - prev30) / prev30 * 100) : null;
+
+      const gen = D.generatedAt ? new Date(D.generatedAt) : null;
+      const ageH = gen ? (Date.now() - gen) / 3600e3 : 0;
+
+      document.getElementById('main').innerHTML = `
+        ${ageH > 26 ? `<div class="stale">⚠️ データが${Math.floor(ageH / 24)}日前のままです。PCとAnkiが起動していないと更新されません。</div>` : ''}
+
+        <div class="card hero">
+          <div class="hero-top">
+            <div>
+              <div class="hero-label">今日の実践数</div>
+              <div style="display:flex;align-items:flex-end;gap:4px">
+                <span class="hero-num">${num(todayN)}</span><span class="hero-unit">回</span>
+              </div>
+            </div>
+            <div class="hero-streak">
+              <b>🔥 ${st}</b><span>日連続${!D.count[t] && st ? '（今日まだ）' : ''}</span>
+            </div>
+          </div>
+          <div class="goal-row">
+            <span>目標 ${num(goal)} 回</span>
+            <button onclick="editGoal()">目標を変える</button>
+          </div>
+          <div class="goal-bar" role="progressbar" aria-valuenow="${todayN}" aria-valuemax="${goal}">
+            <div class="goal-fill ${done ? 'done' : ''}" style="width:${pct}%"></div>
+          </div>
+          <div class="goal-msg ${done ? 'done' : ''}">
+            ${done ? `🎉 目標達成！（＋${num(todayN - goal)}）` : `あと ${num(goal - todayN)} 回`}
+          </div>
+          <div class="hero-sub">
+            <div class="mini"><b>${acc === null ? '—' : acc + '%'}</b><span>正解率</span></div>
+            <div class="mini"><b>${det.sec ? hm(det.sec) : '—'}</b><span>学習時間</span></div>
+            <div class="mini"><b>${num(det.again || 0)}</b><span>間違い</span></div>
+          </div>
+        </div>
+
+        <div class="section-title">集計</div>
+        <div class="tiles">
+          <div class="tile"><span>今週</span><b>${num(sumRange(weekStart, t))}</b><small>月曜から</small></div>
+          <div class="tile"><span>今月</span><b>${num(sumRange(monthStart, t))}</b><small>${parse(t).getMonth() + 1}月</small></div>
+          <div class="tile"><span>30日平均</span><b>${num(Math.round(last30 / 30))}</b>
+            <small>${diff30 === null ? '' : `前の30日より ${diff30 >= 0 ? '+' : ''}${diff30}%`}</small></div>
+          <div class="tile"><span>自己ベスト</span><b>${num(best[1])}</b><small>${best[0] ? best[0].replace(/-/g, '/') : ''}</small></div>
+          <div class="tile"><span>最長連続</span><b>${num(bestStreak())}日</b><small>今 ${st}日</small></div>
+          <div class="tile"><span>累計</span><b>${num(total)}</b><small>${D.history[0] ? D.history[0][0].slice(0, 4) + '年〜' : ''}</small></div>
+          <div class="tile"><span>期日が来たカード</span><b>${num(D.status?.due)}</b><small>未学習 ${num(D.status?.newCards)}</small></div>
+          <div class="tile"><span>総カード</span><b>${num(D.status?.totalCards)}</b><small>枚</small></div>
+        </div>
+
+        <div class="section-title">日別の実践数<span class="spacer"></span>
+          <div class="seg" id="rangeSeg">
+            ${[[14, '2週'], [30, '30日'], [90, '90日']].map(([v, l]) =>
+              `<button class="${ui.range === v ? 'on' : ''}" onclick="setUi('range', ${v})">${l}</button>`).join('')}
+          </div>
+        </div>
+        <div class="card chart-card"><div class="chart-wrap" id="barChart"></div></div>
+
+        <div class="section-title">この1年</div>
+        <div class="card chart-card">
+          <div class="heat-scroll" id="heatScroll"></div>
+          <div class="heat-legend">少 <i style="background:var(--border)"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> 多</div>
+        </div>
+
+        <div class="section-title">デッキ別<span class="spacer"></span>
+          <div class="seg">
+            ${[[1, '今日'], [7, '7日'], [30, '30日']].map(([v, l]) =>
+              `<button class="${ui.deckRange === v ? 'on' : ''}" onclick="setUi('deckRange', ${v})">${l}</button>`).join('')}
+          </div>
+          <div class="seg">
+            ${[['leaf', '細かく'], ['top', '大分類']].map(([v, l]) =>
+              `<button class="${ui.deckMode === v ? 'on' : ''}" onclick="setUi('deckMode', '${v}')">${l}</button>`).join('')}
+          </div>
+        </div>
+        <div class="card" id="deckList"></div>
+
+        <div class="footer-note">
+          データ時刻：${gen ? `${gen.getMonth() + 1}/${gen.getDate()} ${pad(gen.getHours())}:${pad(gen.getMinutes())}` : '不明'}<br>
+          PCでAnkiを起動している間、1時間おきに自動更新されます
+        </div>
+      `;
+
+      drawBars(t, goal);
+      drawHeat(t);
+      drawDecks(t);
+    }
+
+    function setUi(k, v) { ui[k] = v; saveUi(); render(); }
+
+    function editGoal() {
+      const v = prompt('1日の目標回数', getGoal());
+      if (v === null) return;
+      const n = parseInt(v, 10);
+      if (!(n > 0)) { showToast('1以上の数字を入れてください'); return; }
+      localStorage.setItem(GOAL_KEY, String(n));
+      render();
+    }
+
+    // ---------- ツールチップ（マウスオーバー／タップ） ----------
+    const tip = document.getElementById('tip');
+    function showTip(e, html) {
+      tip.innerHTML = html; tip.style.display = 'block';
+      const p = e.touches ? e.touches[0] : e;
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      let x = p.clientX - w / 2, y = p.clientY - h - 14;
+      x = Math.max(8, Math.min(window.innerWidth - w - 8, x));
+      if (y < 8) y = p.clientY + 18;
+      tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    }
+    const hideTip = () => { tip.style.display = 'none'; };
+    document.addEventListener('scroll', hideTip, { passive: true });
+    document.addEventListener('click', e => { if (!e.target.closest('[data-tip]')) hideTip(); });
+    function bindTips(root) {
+      root.querySelectorAll('[data-tip]').forEach(el => {
+        const fn = e => showTip(e, el.dataset.tip);
+        el.addEventListener('mousemove', fn);
+        el.addEventListener('mouseleave', hideTip);
+        el.addEventListener('click', fn);
+      });
+    }
+    function dayTip(d) {
+      const n = D.count[d] || 0, x = D.daily[d];
+      let s = `<b>${md(d)}</b>　${num(n)}回`;
+      if (x) {
+        const ans = x.again + x.hard + x.good + x.easy;
+        if (ans) s += `<br>正解率 ${Math.round((ans - x.again) / ans * 100)}%・間違い ${num(x.again)}`;
+        if (x.sec) s += `<br>学習時間 ${hm(x.sec)}`;
+        if (x.new) s += `<br>新規 ${num(x.new)}枚`;
+      }
+      return esc(s).replace(/&lt;(\/?)(b|br)&gt;/g, '<$1$2>');
+    }
+
+    // ---------- 棒グラフ ----------
+    function drawBars(t, goal) {
+      const box = document.getElementById('barChart');
+      const W = box.clientWidth || 340, H = 170;
+      const L = 34, R = 6, T = 16, B = 20;
+      const n = ui.range;
+      const days = Array.from({ length: n }, (_, i) => ymd(addDays(parse(t), i - n + 1)));
+      const vals = days.map(d => D.count[d] || 0);
+      const max = Math.max(goal, ...vals) * 1.08;
+      const step = niceStep(max / 4);
+      const y = v => T + (H - T - B) * (1 - v / max);
+      const slot = (W - L - R) / n, bw = Math.max(2, slot - (n > 40 ? 1 : 2));
+      let s = '';
+      for (let v = 0; v <= max; v += step) {
+        s += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+        s += `<text class="axis-text" x="${L - 5}" y="${y(v) + 3}" text-anchor="end">${v >= 1000 ? (v / 1000) + 'k' : v}</text>`;
+      }
+      const labelEvery = n <= 14 ? 2 : n <= 30 ? 7 : 14;
+      days.forEach((d, i) => {
+        const x = L + i * slot + (slot - bw) / 2, v = vals[i];
+        const h = Math.max(0, y(0) - y(v));
+        const r = Math.min(4, bw / 2, h);
+        // 上端だけ角丸（下はベースラインに接地）
+        if (v > 0) s += `<path class="bar ${v < goal ? 'dim' : ''}" d="M${x},${y(0)}V${y(v) + r}Q${x},${y(v)} ${x + r},${y(v)}H${x + bw - r}Q${x + bw},${y(v)} ${x + bw},${y(v) + r}V${y(0)}Z"/>`;
+        if ((n - 1 - i) % labelEvery === 0) {
+          const dd = parse(d);
+          s += `<text class="axis-text" x="${x + bw / 2}" y="${H - 5}" text-anchor="middle">${dd.getMonth() + 1}/${dd.getDate()}</text>`;
+        }
+        s += `<rect class="bar-hit" data-tip="${dayTip(d).replace(/"/g, '&quot;')}" x="${L + i * slot}" y="${T}" width="${slot}" height="${H - T - B}"/>`;
+      });
+      // 目標線
+      s += `<line class="goal-line" x1="${L}" x2="${W - R}" y1="${y(goal)}" y2="${y(goal)}"/>`;
+      s += `<text class="goal-text" x="${L + 4}" y="${y(goal) - 4}" text-anchor="start">目標 ${num(goal)}</text>`;
+      // 今日の値だけ直接ラベル
+      const tv = vals[n - 1];
+      if (tv > 0) s += `<text class="val-text" x="${L + (n - 1) * slot + slot / 2}" y="${y(tv) - 4}" text-anchor="end">${num(tv)}</text>`;
+      box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="日別の実践数（目標未達の日は薄く表示）">${s}</svg>`;
+      bindTips(box);
+    }
+    function niceStep(raw) {
+      const p = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+      return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= raw) || p * 10;
+    }
+
+    // ---------- ヒートマップ（GitHub風・1年分） ----------
+    function drawHeat(t) {
+      const end = parse(t);
+      // 53週前の月曜から
+      let start = addDays(end, -364);
+      start = addDays(start, -((start.getDay() + 6) % 7));
+      const vals = [];
+      for (let d = new Date(start); d <= end; d = addDays(d, 1)) vals.push(D.count[ymd(d)] || 0);
+      // 段階の境目は直近1年の実践日の分位点（いつもの量に対して多い・少ないが分かるように）
+      const nz = vals.filter(v => v > 0).sort((a, b) => a - b);
+      const q = p => nz[Math.floor((nz.length - 1) * p)] || 1;
+      const cuts = [q(0.25), q(0.5), q(0.75)];
+      const lvl = v => v <= 0 ? '' : v <= cuts[0] ? 'l1' : v <= cuts[1] ? 'l2' : v <= cuts[2] ? 'l3' : 'l4';
+
+      let cells = '', months = '', lastMonth = -1, col = 0;
+      for (let d = new Date(start); ; d = addDays(d, 7), col++) {
+        if (d > end) break;
+        const m = d.getMonth();
+        months += `<span>${m !== lastMonth ? (m + 1) + '月' : ''}</span>`;
+        lastMonth = m;
+        for (let k = 0; k < 7; k++) {
+          const dd = addDays(d, k), s = ymd(dd);
+          if (dd > end) { cells += '<i class="future"></i>'; continue; }
+          cells += `<i class="${lvl(D.count[s] || 0)} ${s === t ? 'today' : ''}" data-tip="${dayTip(s).replace(/"/g, '&quot;')}"></i>`;
+        }
+      }
+      const box = document.getElementById('heatScroll');
+      box.innerHTML = `<div class="heat-months">${months}</div><div class="heat">${cells}</div>`;
+      box.scrollLeft = box.scrollWidth;   // 最新（右端）を見せる
+      bindTips(box);
+    }
+
+    // ---------- デッキ別 ----------
+    function drawDecks(t) {
+      const from = ymd(addDays(parse(t), -(ui.deckRange - 1)));
+      const agg = {};
+      for (const [deck, days] of Object.entries(D.decks)) {
+        let s = 0;
+        for (const [d, c] of Object.entries(days)) if (d >= from && d <= t) s += c;
+        if (!s) continue;
+        const parts = deck.split('::');
+        const key = ui.deckMode === 'top' ? parts[0] : deck;
+        agg[key] = (agg[key] || 0) + s;
+      }
+      const rows = Object.entries(agg).sort((a, b) => b[1] - a[1]);
+      const box = document.getElementById('deckList');
+      if (!rows.length) { box.innerHTML = '<div class="muted-empty">この期間の記録はありません</div>'; return; }
+      const total = rows.reduce((s, r) => s + r[1], 0), max = rows[0][1];
+      const shown = rows.slice(0, 12), rest = rows.slice(12);
+      if (rest.length) shown.push([`その他 ${rest.length}デッキ`, rest.reduce((s, r) => s + r[1], 0), true]);
+      box.innerHTML = shown.map(([name, n, isOther]) => {
+        const parts = name.split('::');
+        const leaf = parts.pop();
+        const parent = !isOther && parts.length ? `<small>${esc(parts.join(' › '))} › </small>` : '';
+        return `<div class="deck-row" title="${esc(name)}">
+          <div class="deck-top">
+            <span class="deck-name">${parent}${esc(leaf)}</span>
+            <span class="deck-num">${num(n)}</span>
+            <span class="deck-pct">${Math.round(n / total * 100)}%</span>
+          </div>
+          <div class="deck-bar"><div style="width:${Math.max(1, n / max * 100)}%"></div></div>
+        </div>`;
+      }).join('');
+    }
+
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => D && drawBars(ankiToday(), getGoal()), 150);
+    });
+
+    load();
+  </script>
+</body>
+</html>

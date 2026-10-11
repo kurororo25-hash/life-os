@@ -81,6 +81,11 @@
       <span class="card-label">月次チェック</span>
       <span class="card-badge" id="badgeMonthly"></span>
     </a>
+    <a href="pages/anki.html" class="feature-card">
+      <span class="card-icon">🃏</span>
+      <span class="card-label">Anki進捗</span>
+      <span class="card-label" id="ankiToday" style="font-size:10px;color:var(--text-sub);font-weight:600"></span>
+    </a>
   </main>
 
   <script src="js/storage.js"></script>
@@ -170,6 +175,18 @@
         }
       }
     } catch {}
+
+    // Anki進捗：今日の実践数と目標達成状況（データはPCの tools/anki_export.py が自動push）
+    fetch('data/anki-stats.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(a => {
+        const t = new Date(Date.now() - (a.rolloverHour || 0) * 3600e3);
+        const key = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+        const n = (a.history.find(h => h[0] === key) || [0, 0])[1];
+        const goal = parseInt(localStorage.getItem('life_anki_goal'), 10) || 500;
+        document.getElementById('ankiToday').textContent = `今日 ${n.toLocaleString('ja-JP')}回${n >= goal ? ' ✅' : ''}`;
+      })
+      .catch(() => {});
   </script>
 </body>
 </html>

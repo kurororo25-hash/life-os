@@ -44,7 +44,12 @@ life-os/
 │   ├── lifelog.html     ライフログ（一日の振り返り）
 │   ├── maintenance.html 整備管理（車）
 │   ├── habit.html       習慣チェック（毎日リセット）
-│   └── monthly.html     月次チェック（毎月リセット）
+│   ├── monthly.html     月次チェック（毎月リセット）
+│   └── anki.html        Anki進捗（実践数・目標・グラフ・デッキ別）
+├── data/
+│   └── anki-stats.json  Anki集計データ（tools/anki_export.py が自動生成・push）
+├── tools/
+│   └── anki_export.py   AnkiConnect→集計→JSON書き出し→commit&push（タスクスケジューラで1時間おき）
 └── docs/                説明ドキュメント群
 ```
 
@@ -63,6 +68,7 @@ life-os/
 | `life_habit`            | habit.html       | date, checks（habit id → true/false） |
 | `life_monthly_tasks`    | monthly.html     | id, label |
 | `life_monthly`          | monthly.html     | month（YYYY-MM）, checks（task id → true/false） |
+| `life_anki_goal`        | anki.html        | 1日の目標回数（未設定時500） |
 | `life_sync_tombstones`  | 全ページ共通     | 同期時に削除をマージへ反映するための削除記録（Storage.remove/restoreが管理） |
 
 ---
@@ -83,6 +89,7 @@ life-os/
 
 ## 注意事項
 
+- `data/anki-stats.json` は自動commitされるので、手作業のcommitと競合しないよう anki_export.py はこのファイルだけを `git commit -- data/anki-stats.json` で commit する
 - localStorage はブラウザごと・端末ごとに独立している（iPhoneとPCはデータが別）
 - HTTPS 環境でのみ PWA として動作する（GitHub Pages は HTTPS なので問題なし）
 - APIキーやパスワードはファイルに書かない
@@ -94,6 +101,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-10-11 | Anki進捗（anki.html）を追加。データはPC側の `tools/anki_export.py` がAnkiConnectから集計して `data/anki-stats.json` をpushし、ページはそれをfetchして表示（iPhoneでも閲覧可）。Windowsタスク「生活OS_Anki進捗更新」で1時間おき＋ログオン時に実行。Anki未起動ならログだけ残して静かに終了。目標回数 `life_anki_goal` は同期対象。sw.js CACHE_VERSION v3 |
 | 2026-08-16 | 月次チェック（monthly.html）を追加。habit.htmlと同じUI・ロジック（追加・編集・削除・並び替え・進捗バー）だが、リセット単位が「日」ではなく「月」（保存している`month`がYYYY-MM形式で、開いた月と違えばチェックを空にリセット）。振込・請求書確認・口座残高チェックなど毎月やることの管理用。初期タスクは「家賃・ローンの振込」「クレジットカード請求書の確認」「口座残高チェック」「公共料金の支払い確認」を仮登録（自由に編集・削除可）。ホーム画面にカード＋未完了件数バッジを追加、sw.jsのプリキャッシュ対象にも追加してCACHE_VERSIONをv2に更新 |
 | 2026-08-01 | 欠けていた icon.png（192/512px）・apple-touch-icon.png を作成し manifest.json / index.html に反映。CSS変数のダーク値を `prefers-color-scheme: dark` で上書きするダークモード対応を追加（habit.htmlの背景白固定バグ・GCal注意書きの文字色固定も合わせて修正）。sw.js にアプリ本体一式のプリキャッシュを追加し、オフラインでも開けるように変更。docs（本ファイル・今後やること.md）を実装済み項目に合わせて更新 |
 | 2026-07-26 | リマインダー・タイムボクシングのスペース区切り一括追加を編集モーダルでも使えるように拡張（1件目が編集対象を更新、2件目以降は新規追加） |
