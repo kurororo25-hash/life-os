@@ -59,7 +59,7 @@ life-os/
 
 | キー名 | 使用ページ | 主な項目 |
 |--------|-----------|---------|
-| `life_reminders`        | reminder.html    | title, date, time, repeat, priority, done, notes, gcalEventId |
+| `life_reminders`        | reminder.html    | title, date, time, repeat, repeatDay（毎月繰り返しの本来の日 1〜31）, priority, done, notes, gcalEventId |
 | `life_timebox`          | timebox.html     | date, title, startTime, endTime（30分固定）, done, gcalEventId |
 | `life_lifelog`          | lifelog.html     | date, title, startTime, endTime（自由な長さ）, mood, notes |
 | `life_maintenance`      | maintenance.html | name, lastDate, nextDate, nextKm, notes |
@@ -102,6 +102,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-10-11 | 毎月リマインダーに `repeatDay`（本来の日）を追加。31日→2/28→3/31のように、月末に丸めた後も本来の日へ戻る。sw.js v5 |
 | 2026-10-11 | 日付バグ修正：`toISOString().slice(0,10)`（UTC）で日付を作っていた箇所を `localDateStr()`（common.js に追加）に統一。日本時間0〜9時に「今日」が前日になる・リマインダーの毎日繰り返しが進まない問題を解消。毎月繰り返しの月末溢れ（1/31→3/3）も月末に丸めるよう修正。sw.js v4 |
 | 2026-10-11 | Anki進捗（anki.html）を追加。データはPC側の `tools/anki_export.py` がAnkiConnectから集計して `data/anki-stats.json` をpushし、ページはそれをfetchして表示（iPhoneでも閲覧可）。Windowsタスク「生活OS_Anki進捗更新」で1時間おき＋ログオン時に実行。Anki未起動ならログだけ残して静かに終了。目標回数 `life_anki_goal` は同期対象。sw.js CACHE_VERSION v3 |
 | 2026-08-16 | 月次チェック（monthly.html）を追加。habit.htmlと同じUI・ロジック（追加・編集・削除・並び替え・進捗バー）だが、リセット単位が「日」ではなく「月」（保存している`month`がYYYY-MM形式で、開いた月と違えばチェックを空にリセット）。振込・請求書確認・口座残高チェックなど毎月やることの管理用。初期タスクは「家賃・ローンの振込」「クレジットカード請求書の確認」「口座残高チェック」「公共料金の支払い確認」を仮登録（自由に編集・削除可）。ホーム画面にカード＋未完了件数バッジを追加、sw.jsのプリキャッシュ対象にも追加してCACHE_VERSIONをv2に更新 |

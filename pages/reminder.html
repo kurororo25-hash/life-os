@@ -257,6 +257,7 @@
         notes:    document.getElementById('fNotes').value.trim(),
         done:     false
       };
+      base.repeatDay = monthlyRepeatDay(base, editingId && Storage.get(KEY).find(i => i.id === editingId));
 
       const savedItems = [];
       if (editingId) {
@@ -300,8 +301,9 @@
       if (!item) return;
 
       if (!item.done && item.repeat && item.repeat !== 'none') {
-        const next = getNextDate(item.date, item.repeat);
-        Storage.update(KEY, id, { date: next });
+        const repeatDay = monthlyRepeatDay(item, item);
+        const next = getNextDate(item.date, item.repeat, repeatDay);
+        Storage.update(KEY, id, { date: next, repeatDay });
         showToast(`次回: ${formatDate(next)}`);
       } else {
         Storage.update(KEY, id, { done: !item.done });
@@ -310,15 +312,25 @@
       render();
     }
 
-    function getNextDate(dateStr, repeat) {
+    // 毎月繰り返しの「本来の日」（1〜31）。31日のリマインダーが2月に28日になっても、
+    // 3月以降は31日に戻れるよう、日付とは別に覚えておく。毎月以外・日付なしは null
+    // prev: 保存済みの項目。日付を変えていなければ以前の本来の日を引き継ぐ（2/28のまま他の項目を編集しても31日のまま）
+    function monthlyRepeatDay(item, prev) {
+      if (item.repeat !== 'monthly' || !item.date) return null;
+      if (prev && prev.repeatDay && prev.date === item.date) return prev.repeatDay;
+      return Number(item.date.slice(8, 10));
+    }
+
+    function getNextDate(dateStr, repeat, repeatDay) {
       const d = new Date((dateStr || today()) + 'T00:00:00');
       if (repeat === 'daily') {
         d.setDate(d.getDate() + 1);
       } else if (repeat === 'weekly') {
         d.setDate(d.getDate() + 7);
       } else if (repeat === 'monthly') {
-        // 31日→翌月に31日が無ければ月末に合わせる（setMonthだけだと 1/31→3/3 のように溢れる）
-        const day = d.getDate();
+        // 本来の日（repeatDay）が翌月に無ければ月末に合わせる（setMonthだけだと 1/31→3/3 のように溢れる）
+        // 例：31日 → 1/31 → 2/28 → 3/31 → 4/30 → 5/31
+        const day = repeatDay || d.getDate();
         d.setDate(1);
         d.setMonth(d.getMonth() + 1);
         d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
@@ -422,7 +434,7 @@
       }
 
       const repeatPart = (item.repeat && item.repeat !== 'none')
-        ? `<span class="tag">${repeatLabel(item.repeat)}</span>` : '';
+        ? `<span class="tag">${item.repeat === 'monthly' && item.repeatDay ? `毎月${item.repeatDay}日${item.repeatDay >= 29 ? '（無い月は月末）' : ''}` : repeatLabel(item.repeat)}</span>` : '';
 
       const gcalPart = item.gcalEventId
         ? `<span class="tag" style="background:#e8f0fe;color:#4285f4;font-size:10px;padding:2px 7px">G</span>`
