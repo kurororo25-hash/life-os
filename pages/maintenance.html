@@ -51,12 +51,18 @@
         <input type="text" class="form-input" id="fName" placeholder="例：ワイパーゴム交換">
       </div>
 
-      <div class="form-group">
-        <label class="form-label">前回実施日（任意）</label>
-        <div style="display:flex;gap:6px">
-          <select class="form-select" id="fLastDateY" style="flex:1.2;min-width:0"></select>
-          <select class="form-select" id="fLastDateM" style="flex:1;min-width:0"></select>
-          <select class="form-select" id="fLastDateD" style="flex:1;min-width:0"></select>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">前回実施日（任意）</label>
+          <div style="display:flex;gap:6px">
+            <select class="form-select" id="fLastDateY" style="flex:1.2;min-width:0"></select>
+            <select class="form-select" id="fLastDateM" style="flex:1;min-width:0"></select>
+            <select class="form-select" id="fLastDateD" style="flex:1;min-width:0"></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">前回の走行距離(km)</label>
+          <input type="number" class="form-input" id="fLastKm" min="0" placeholder="例：30000">
         </div>
       </div>
 
@@ -114,6 +120,12 @@
       'ワイパーゴム交換',
       'エアコンフィルター交換',
       'その他（自由入力）'
+    ];
+
+    // オイルとエレメントは未登録でも一覧に出す（presetはPRESETSの番号）
+    const OIL_ITEMS = [
+      { name: 'エンジンオイル交換', preset: 0, match: n => /オイル/.test(n) && !/エレメント|フィルター/.test(n) },
+      { name: 'オイルエレメント交換', preset: 1, match: n => /エレメント|オイルフィルター/.test(n) }
     ];
 
     function initPresetSelect() {
@@ -310,7 +322,7 @@
       return { daysLeft, kmLeft, level };
     }
 
-    function openModal(id) {
+    function openModal(id, preset) {
       editingId = id || null;
       document.getElementById('modalTitle').textContent = id ? '整備項目を編集' : '整備項目を追加';
       document.getElementById('modalOverlay').classList.remove('hidden');
@@ -322,18 +334,21 @@
           document.getElementById('fPreset').value = '';
           document.getElementById('fName').value    = item.name || '';
           setDateValue('fLastDate', item.lastDate || '');
+          document.getElementById('fLastKm').value    = item.lastKm != null ? item.lastKm : '';
           setDateValue('fNextDate', item.nextDate || '');
           document.getElementById('fNextKm').value    = item.nextKm != null ? item.nextKm : '';
           document.getElementById('fNotes').value     = item.notes || '';
           document.getElementById('customNameGroup').classList.remove('hidden');
         }
       } else {
-        document.getElementById('fPreset').value = '';
+        document.getElementById('fPreset').value = preset != null ? preset : '';
         document.getElementById('fName').value = '';
         setDateValue('fLastDate', '');
+        document.getElementById('fLastKm').value = '';
         setDateValue('fNextDate', '');
         document.getElementById('fNextKm').value = '';
         document.getElementById('fNotes').value = '';
+        applyPreset();
       }
     }
 
@@ -351,6 +366,7 @@
       const lastDate = getDateValue('fLastDate');
       const nextDate = getDateValue('fNextDate');
       const nextKmVal = document.getElementById('fNextKm').value;
+      const lastKmVal = document.getElementById('fLastKm').value;
 
       if (!name) { alert('項目名を入力してください'); return; }
       if (!nextDate && nextKmVal === '') {
@@ -361,6 +377,7 @@
       const data = {
         name,
         lastDate: lastDate || '',
+        lastKm: lastKmVal !== '' ? parseInt(lastKmVal) : null,
         nextDate: nextDate || '',
         nextKm: nextKmVal !== '' ? parseInt(nextKmVal) : null,
         notes: document.getElementById('fNotes').value.trim()
@@ -390,19 +407,25 @@
       return '';
     }
 
+    // 「前回: 7月1日（水）・30,000km（前回から2,500km走行）」の形にまとめる
+    function lastInfo(item) {
+      const parts = [];
+      if (item.lastDate) parts.push(formatDate(item.lastDate));
+      if (item.lastKm != null) {
+        const mileage = getMeta().mileage;
+        const since = mileage != null && mileage >= item.lastKm
+          ? `（前回から${(mileage - item.lastKm).toLocaleString()}km走行）`
+          : '';
+        parts.push(`${item.lastKm.toLocaleString()}km${since}`);
+      } else if (OIL_ITEMS.some(o => o.match(item.name))) {
+        parts.push('距離未入力');
+      }
+      return parts.length ? `前回: ${parts.join('・')}` : '';
+    }
+
     function render() {
       const items = Storage.get(KEY);
       const container = document.getElementById('listContainer');
-
-      if (items.length === 0) {
-        container.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">🔧</div>
-            <div class="empty-state-text">登録された整備項目がありません</div>
-            <div class="empty-state-sub">＋ ボタンで追加できます</div>
-          </div>`;
-        return;
-      }
 
       // 緊急度（期限切れ→まもなく→余裕あり）の順に並べ、同じ緊急度の中では日数・距離が近い順に並べる
       const withStatus = items.map(item => ({ item, status: computeStatus(item) }));
@@ -430,6 +453,7 @@
         const kmInfo = item.nextKm != null
           ? `次回予定: ${item.nextKm.toLocaleString()}km${status.kmLeft != null ? `（残り${status.kmLeft.toLocaleString()}km）` : ''}`
           : '';
+        const last = lastInfo(item);
 
         html += `
           <div class="list-item" style="background:${status.level === 'overdue' ? 'var(--danger-light)' : status.level === 'soon' ? 'var(--warning-light)' : ''}">
@@ -438,7 +462,7 @@
                 <span class="list-item-title">${esc(item.name)}</span>
                 ${levelBadge(status.level)}
               </div>
-              ${item.lastDate ? `<div class="list-item-sub">前回: ${formatDate(item.lastDate)}</div>` : ''}
+              ${last ? `<div class="list-item-sub">${last}</div>` : ''}
               ${dateInfo ? `<div class="list-item-sub">${dateInfo}</div>` : ''}
               ${kmInfo ? `<div class="list-item-sub">${kmInfo}</div>` : ''}
               ${item.notes ? `<div class="list-item-sub">${esc(item.notes)}</div>` : ''}
@@ -447,6 +471,16 @@
               <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
               <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
             </div>
+          </div>`;
+      });
+      OIL_ITEMS.filter(o => !items.some(i => o.match(i.name))).forEach(o => {
+        html += `
+          <div class="list-item">
+            <div class="list-item-body">
+              <span class="list-item-title">${o.name}</span>
+              <div class="list-item-sub">未登録（前回の距離はまだありません）</div>
+            </div>
+            <button class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="openModal(null, ${o.preset})">＋ 登録</button>
           </div>`;
       });
       html += '</div>';
