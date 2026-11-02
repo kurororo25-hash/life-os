@@ -28,6 +28,20 @@
       <div id="mileageLogContainer" class="hidden" style="padding:0 16px 12px"></div>
     </div>
 
+    <div class="card" style="margin-bottom:12px">
+      <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:14px;font-weight:700">🧰 安心メンテナンスパック</div>
+          <div style="font-size:11px;color:var(--text-sub, #888)" id="visitLast"></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-ghost" onclick="toggleVisitLog()">📜 履歴</button>
+          <button class="btn btn-sm btn-primary" onclick="openVisitModal()">✅ 記録</button>
+        </div>
+      </div>
+      <div id="visitLogContainer" class="hidden" style="padding:0 16px 12px"></div>
+    </div>
+
     <div id="listContainer"></div>
   </main>
 
@@ -96,6 +110,49 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="visitOverlay" onclick="visitOverlayClick(event)">
+    <div class="modal">
+      <div class="modal-title">
+        <span>安心メンテナンスパックの記録</span>
+        <button class="btn-icon" onclick="closeVisitModal()">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">実施日</label>
+        <div style="display:flex;gap:6px">
+          <select class="form-select" id="fVisitDateY" style="flex:1.2;min-width:0"></select>
+          <select class="form-select" id="fVisitDateM" style="flex:1;min-width:0"></select>
+          <select class="form-select" id="fVisitDateD" style="flex:1;min-width:0"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">今回の点検 ＊（案内ハガキや明細で確認）</label>
+        <select class="form-select" id="fVisitCourse" onchange="fillVisitRows()">
+          <option value="">選択してください</option>
+          <option value="anshin">安心メンテナンス</option>
+          <option value="legal">法定1年点検</option>
+          <option value="shaken">車検</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">走行距離(km)</label>
+        <input type="number" class="form-input" id="fVisitKm" min="0" oninput="fillVisitKm()">
+      </div>
+
+      <div id="visitRows" class="hidden"></div>
+
+      <div class="form-group">
+        <label class="form-label">メモ</label>
+        <textarea class="form-textarea" id="fVisitNotes" placeholder="店舗名・指摘された箇所・費用など（任意）"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeVisitModal()">キャンセル</button>
+        <button class="btn btn-primary" onclick="saveVisit()">保存する</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
   <script src="../js/storage.js"></script>
@@ -107,6 +164,7 @@
     const KEY           = 'life_maintenance';
     const META_KEY      = 'life_maintenance_meta';
     const MILEAGE_LOG_KEY = 'life_mileage_log';
+    const VISIT_LOG_KEY = 'life_maintenance_visits';
     let editingId  = null;
 
     // 項目名の候補（一般的な軽自動車・バンでよくある整備項目）
@@ -119,13 +177,32 @@
       'バッテリー交換',
       'ワイパーゴム交換',
       'エアコンフィルター交換',
+      'タイヤ空気圧点検',
+      '安心メンテナンスパック',
       'その他（自由入力）'
     ];
 
     // オイルとエレメントは未登録でも一覧に出す（presetはPRESETSの番号）
     const OIL_ITEMS = [
-      { name: 'エンジンオイル交換', preset: 0, match: n => /オイル/.test(n) && !/エレメント|フィルター/.test(n) },
+      { name: 'エンジンオイル交換', preset: 0, match: n => /オイル/.test(n) && !/エレメント|フィルター|ブレーキ/.test(n) },
       { name: 'オイルエレメント交換', preset: 1, match: n => /エレメント|オイルフィルター/.test(n) }
+    ];
+
+    // 空気圧も未登録のとき一覧に出す
+    const PRESSURE_ITEM = { name: 'タイヤ空気圧点検', preset: 8, match: n => /空気圧/.test(n) };
+    const PRESSURE_MONTHS = 1; // JATMAの呼びかけ「月に1度は点検」
+
+    const COURSE_NAMES = { anshin: '安心メンテナンス', legal: '法定1年点検', shaken: '車検' };
+    const VISIT_NOTE = '安心メンテナンスパックで実施';
+
+    // パックの1回で更新する項目。monthsは次回予定日の初期値で、スズキ公式のコース表（軽貨物）の間隔
+    // オイルは毎回、フィルターは法定1年点検と車検のときだけ交換
+    const VISIT_ITEMS = [
+      { key: 'pack', name: '安心メンテナンスパック', months: 6, courses: ['anshin', 'legal', 'shaken'], match: n => /安心メンテ|メンテナンスパック/.test(n) },
+      { key: 'oil', ...OIL_ITEMS[0], months: 6, courses: ['anshin', 'legal', 'shaken'], hasKm: true },
+      { key: 'filter', ...OIL_ITEMS[1], months: 12, courses: ['legal', 'shaken'], hasKm: true },
+      { key: 'pressure', ...PRESSURE_ITEM, months: PRESSURE_MONTHS, courses: ['anshin', 'legal', 'shaken'], note: '月1回が目安。指定空気圧は運転席側のドア付近のラベルで確認' },
+      { key: 'shaken', name: '車検', months: 24, courses: ['shaken'], match: n => /車検/.test(n) }
     ];
 
     function initPresetSelect() {
@@ -167,12 +244,16 @@
       if (val === null) return;
       const num = parseInt(val);
       if (isNaN(num) || num < 0) { alert('正しい数値を入力してください'); return; }
-      const entry = Storage.add(MILEAGE_LOG_KEY, { mileage: num });
-      setMeta({ mileage: num, updatedAt: entry.createdAt });
+      recordMileage(num);
       showToast('走行距離を更新しました ✓');
       renderMileage();
       renderMileageLog();
       render();
+    }
+
+    function recordMileage(num) {
+      const entry = Storage.add(MILEAGE_LOG_KEY, { mileage: num });
+      setMeta({ mileage: num, updatedAt: entry.createdAt });
     }
 
     function renderMileage() {
@@ -302,6 +383,175 @@
       const a = new Date(fromStr + 'T00:00:00');
       const b = new Date(toStr + 'T00:00:00');
       return Math.round((b - a) / 86400000);
+    }
+
+    // 月末は丸める（8/31の6か月後→2/28）
+    function addMonths(dateStr, months) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return localDateStr(new Date(y, m - 1 + months, Math.min(d, daysInMonth(y, m + months))));
+    }
+
+    function buildVisitRows() {
+      const container = document.getElementById('visitRows');
+      container.innerHTML = VISIT_ITEMS.map(row => `
+        <div class="form-group hidden" id="vRow_${row.key}">
+          <label class="form-label" style="display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="vCheck_${row.key}" checked>${esc(row.name)}の次回予定
+          </label>
+          <div style="display:flex;gap:6px">
+            <select class="form-select" id="vDate_${row.key}Y" style="flex:1.2;min-width:0"></select>
+            <select class="form-select" id="vDate_${row.key}M" style="flex:1;min-width:0"></select>
+            <select class="form-select" id="vDate_${row.key}D" style="flex:1;min-width:0"></select>
+          </div>
+          ${row.hasKm ? `<input type="number" class="form-input" id="vKm_${row.key}" min="0" placeholder="次回予定の走行距離(km)（任意）" style="margin-top:6px">` : ''}
+        </div>`).join('');
+      VISIT_ITEMS.forEach(row => buildDateSelect(`vDate_${row.key}`));
+      ['Y', 'M', 'D'].forEach(s => {
+        document.getElementById('fVisitDate' + s).addEventListener('change', fillVisitRows);
+      });
+    }
+
+    function openVisitModal() {
+      setDateValue('fVisitDate', today());
+      document.getElementById('fVisitCourse').value = '';
+      document.getElementById('fVisitKm').value = '';
+      const mileage = getMeta().mileage;
+      document.getElementById('fVisitKm').placeholder = mileage != null ? `前回入力: ${mileage.toLocaleString()}` : '例：30000';
+      document.getElementById('fVisitNotes').value = '';
+      fillVisitRows();
+      document.getElementById('visitOverlay').classList.remove('hidden');
+    }
+
+    function closeVisitModal() {
+      document.getElementById('visitOverlay').classList.add('hidden');
+    }
+
+    function visitOverlayClick(e) {
+      if (e.target === document.getElementById('visitOverlay')) closeVisitModal();
+    }
+
+    // 点検の種類と実施日から、次回予定日の初期値を入れる（保存前に手で変えられる）
+    function fillVisitRows() {
+      const course = document.getElementById('fVisitCourse').value;
+      const date = getDateValue('fVisitDate');
+      document.getElementById('visitRows').classList.toggle('hidden', !course);
+      VISIT_ITEMS.forEach(row => {
+        const applies = row.courses.includes(course);
+        document.getElementById(`vRow_${row.key}`).classList.toggle('hidden', !applies);
+        document.getElementById(`vCheck_${row.key}`).checked = applies;
+        if (applies && date) setDateValue(`vDate_${row.key}`, addMonths(date, row.months));
+      });
+      fillVisitKm();
+    }
+
+    // 次回予定kmは、登録済みの項目と同じ間隔があるときだけ入れる（間隔を勝手に決めない）
+    function fillVisitKm() {
+      const km = parseInt(document.getElementById('fVisitKm').value);
+      const items = Storage.get(KEY);
+      VISIT_ITEMS.filter(row => row.hasKm).forEach(row => {
+        const item = items.find(i => row.match(i.name));
+        const hasInterval = item && item.nextKm != null && item.lastKm != null && item.nextKm > item.lastKm;
+        document.getElementById(`vKm_${row.key}`).value = (hasInterval && !isNaN(km)) ? km + (item.nextKm - item.lastKm) : '';
+      });
+    }
+
+    function saveVisit() {
+      const date = getDateValue('fVisitDate');
+      const course = document.getElementById('fVisitCourse').value;
+      const kmVal = document.getElementById('fVisitKm').value;
+      const km = kmVal !== '' ? parseInt(kmVal) : null;
+
+      if (!date) { alert('実施日を選択してください'); return; }
+      if (!course) { alert('今回の点検を選択してください'); return; }
+      if (km !== null && (isNaN(km) || km < 0)) { alert('走行距離は正しい数値を入力してください'); return; }
+
+      const rows = VISIT_ITEMS.filter(row => row.courses.includes(course) && document.getElementById(`vCheck_${row.key}`).checked);
+      for (const row of rows) {
+        if (!getDateValue(`vDate_${row.key}`) && !(row.hasKm && document.getElementById(`vKm_${row.key}`).value !== '')) {
+          alert(`${row.name}の次回予定を入力してください`);
+          return;
+        }
+      }
+
+      rows.forEach(row => {
+        const data = { lastDate: date, lastKm: km, nextDate: getDateValue(`vDate_${row.key}`) };
+        if (row.hasKm) {
+          const nextKmVal = document.getElementById(`vKm_${row.key}`).value;
+          data.nextKm = nextKmVal !== '' ? parseInt(nextKmVal) : null;
+        }
+        const existing = Storage.get(KEY).find(i => row.match(i.name));
+        if (existing) {
+          Storage.update(KEY, existing.id, data);
+        } else {
+          Storage.add(KEY, { name: row.name, nextKm: null, notes: row.note || VISIT_NOTE, ...data });
+        }
+      });
+
+      Storage.add(VISIT_LOG_KEY, {
+        date,
+        course,
+        km,
+        notes: document.getElementById('fVisitNotes').value.trim()
+      });
+
+      // 過去の実施分を後から記録しても、現在の走行距離は巻き戻さない
+      const mileage = getMeta().mileage;
+      if (km !== null && (mileage == null || km > mileage)) recordMileage(km);
+
+      closeVisitModal();
+      showToast(`${rows.length}件の整備項目を更新しました ✓`);
+      renderMileage();
+      renderVisit();
+      render();
+    }
+
+    function renderVisit() {
+      const log = sortedVisitLog();
+      document.getElementById('visitLast').textContent = log.length
+        ? `前回: ${formatDate(log[0].date)}・${COURSE_NAMES[log[0].course] || ''}`
+        : '点検が終わったらここから記録';
+      const container = document.getElementById('visitLogContainer');
+      if (container.classList.contains('hidden')) return;
+      if (log.length === 0) {
+        container.innerHTML = `<div style="font-size:12px;color:var(--text-sub, #888);padding:8px 0">記録はまだありません</div>`;
+        return;
+      }
+      container.innerHTML = '<div style="border-top:1px solid var(--border, #eee);margin-top:4px">' + log.map(entry => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border, #f0f0f0)">
+          <span>
+            ${formatDate(entry.date)}・${esc(COURSE_NAMES[entry.course] || '')}${entry.km != null ? `・${Number(entry.km).toLocaleString()}km` : ''}
+            ${entry.notes ? `<div style="font-size:12px;color:var(--text-sub, #888)">${esc(entry.notes)}</div>` : ''}
+          </span>
+          <button class="btn-icon" onclick="deleteVisitLogEntry('${entry.id}')">🗑️</button>
+        </div>`).join('') + '</div>';
+    }
+
+    function sortedVisitLog() {
+      return [...Storage.get(VISIT_LOG_KEY)].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    }
+
+    function toggleVisitLog() {
+      document.getElementById('visitLogContainer').classList.toggle('hidden');
+      renderVisit();
+    }
+
+    function deleteVisitLogEntry(id) {
+      if (!confirmDelete('この点検の記録を削除しますか？\n（整備項目の日付は変わりません）')) return;
+      Storage.remove(VISIT_LOG_KEY, id);
+      renderVisit();
+    }
+
+    // 空気圧は月1回自分でも見るので、一覧から今日の日付で記録できるようにする
+    function markPressureChecked(id) {
+      const date = today();
+      const mileage = getMeta().mileage;
+      Storage.update(KEY, id, {
+        lastDate: date,
+        lastKm: mileage != null ? mileage : null,
+        nextDate: addMonths(date, PRESSURE_MONTHS)
+      });
+      showToast('空気圧の点検を記録しました ✓');
+      render();
     }
 
     // 整備1件の状態（残り日数・残りkm・緊急度）を計算
@@ -466,6 +716,7 @@
               ${dateInfo ? `<div class="list-item-sub">${dateInfo}</div>` : ''}
               ${kmInfo ? `<div class="list-item-sub">${kmInfo}</div>` : ''}
               ${item.notes ? `<div class="list-item-sub">${esc(item.notes)}</div>` : ''}
+              ${PRESSURE_ITEM.match(item.name) ? `<button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="markPressureChecked('${item.id}')">✅ 今日点検した</button>` : ''}
             </div>
             <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
               <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
@@ -473,12 +724,12 @@
             </div>
           </div>`;
       });
-      OIL_ITEMS.filter(o => !items.some(i => o.match(i.name))).forEach(o => {
+      [...OIL_ITEMS, PRESSURE_ITEM].filter(o => !items.some(i => o.match(i.name))).forEach(o => {
         html += `
           <div class="list-item">
             <div class="list-item-body">
               <span class="list-item-title">${o.name}</span>
-              <div class="list-item-sub">未登録（前回の距離はまだありません）</div>
+              <div class="list-item-sub">未登録（前回の記録はまだありません）</div>
             </div>
             <button class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="openModal(null, ${o.preset})">＋ 登録</button>
           </div>`;
@@ -491,8 +742,11 @@
     initPresetSelect();
     buildDateSelect('fLastDate');
     buildDateSelect('fNextDate');
+    buildDateSelect('fVisitDate');
+    buildVisitRows();
     ensureMileageLogSeed();
     renderMileage();
+    renderVisit();
     render();
   </script>
 </body>

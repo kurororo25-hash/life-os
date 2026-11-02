@@ -64,6 +64,7 @@ life-os/
 | `life_lifelog`          | lifelog.html     | date, title, startTime, endTime（自由な長さ）, mood, notes |
 | `life_maintenance`      | maintenance.html | name, lastDate, lastKm（前回実施時の走行距離）, nextDate, nextKm, notes |
 | `life_maintenance_meta` | maintenance.html | mileage（現在の走行距離） |
+| `life_maintenance_visits` | maintenance.html | date, course（anshin/legal/shaken）, km, notes（安心メンテナンスパックの点検履歴） |
 | `life_habit_habits`     | habit.html       | id, name, period（朝/夜など） |
 | `life_habit`            | habit.html       | date, checks（habit id → true/false） |
 | `life_monthly_tasks`    | monthly.html     | id, label |
@@ -102,6 +103,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-11-02 | 整備管理に安心メンテナンスパックの一括記録と履歴 `life_maintenance_visits`、タイヤ空気圧の項目を追加。sw.js v7 |
 | 2026-11-01 | 整備管理に前回実施時の走行距離 `lastKm` を追加し、「前回から○km走行」を表示。オイル・エレメントは未登録でも一覧に表示。sw.js v6 |
 | 2026-10-11 | 毎月リマインダーに `repeatDay`（本来の日）を追加。31日→2/28→3/31のように、月末に丸めた後も本来の日へ戻る。sw.js v5 |
 | 2026-10-11 | 日付バグ修正：`toISOString().slice(0,10)`（UTC）で日付を作っていた箇所を `localDateStr()`（common.js に追加）に統一。日本時間0〜9時に「今日」が前日になる・リマインダーの毎日繰り返しが進まない問題を解消。毎月繰り返しの月末溢れ（1/31→3/3）も月末に丸めるよう修正。sw.js v4 |
