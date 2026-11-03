@@ -26,13 +26,10 @@
         </div>
       </div>
       <div id="mileageLogContainer" class="hidden" style="padding:0 16px 12px"></div>
-    </div>
-
-    <div class="card" style="margin-bottom:12px">
-      <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div style="padding:10px 16px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div>
-          <div style="font-size:14px;font-weight:700">🧰 安心メンテナンスパック</div>
-          <div style="font-size:11px;color:var(--text-sub, #888)" id="visitLast"></div>
+          <div style="font-size:12px;color:var(--text-sub, #888)">🧰 安心メンテナンスパック</div>
+          <div style="font-size:13px;font-weight:600" id="visitLast"></div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn btn-sm btn-ghost" onclick="toggleVisitLog()">📜 履歴</button>
@@ -178,7 +175,6 @@
       'ワイパーゴム交換',
       'エアコンフィルター交換',
       'タイヤ空気圧点検',
-      '安心メンテナンスパック',
       'その他（自由入力）'
     ];
 
@@ -198,12 +194,16 @@
     // パックの1回で更新する項目。monthsは次回予定日の初期値で、スズキ公式のコース表（軽貨物）の間隔
     // オイルは毎回、フィルターは法定1年点検と車検のときだけ交換
     const VISIT_ITEMS = [
-      { key: 'pack', name: '安心メンテナンスパック', months: 6, courses: ['anshin', 'legal', 'shaken'], match: n => /安心メンテ|メンテナンスパック/.test(n) },
       { key: 'oil', ...OIL_ITEMS[0], months: 6, courses: ['anshin', 'legal', 'shaken'], hasKm: true },
       { key: 'filter', ...OIL_ITEMS[1], months: 12, courses: ['legal', 'shaken'], hasKm: true },
       { key: 'pressure', ...PRESSURE_ITEM, months: PRESSURE_MONTHS, courses: ['anshin', 'legal', 'shaken'], note: '月1回が目安。指定空気圧は運転席側のドア付近のラベルで確認' },
       { key: 'shaken', name: '車検', months: 24, courses: ['shaken'], match: n => /車検/.test(n) }
     ];
+
+    // 2026-11-02版で自動追加していた「安心メンテナンスパック」の項目は不要になったので消す（点検の履歴は残る）
+    function removePackItems() {
+      Storage.get(KEY).filter(i => i.name === '安心メンテナンスパック').forEach(i => Storage.remove(KEY, i.id));
+    }
 
     function initPresetSelect() {
       const sel = document.getElementById('fPreset');
@@ -657,30 +657,72 @@
       return '';
     }
 
-    // 「前回: 7月1日（水）・30,000km（前回から2,500km走行）」の形にまとめる
+    // 今年なら「12月2日（水）」、別の年なら「2028年11月2日（木）」
+    function fmtDate(dateStr) {
+      const y = dateStr.slice(0, 4);
+      return (y === today().slice(0, 4) ? '' : `${y}年`) + formatDate(dateStr);
+    }
+
+    // 「前回 11月2日（月）・45,000km（その後 2,500km走行）」
     function lastInfo(item) {
       const parts = [];
-      if (item.lastDate) parts.push(formatDate(item.lastDate));
+      if (item.lastDate) parts.push(fmtDate(item.lastDate));
       if (item.lastKm != null) {
         const mileage = getMeta().mileage;
-        const since = mileage != null && mileage >= item.lastKm
-          ? `（前回から${(mileage - item.lastKm).toLocaleString()}km走行）`
+        const since = mileage != null && mileage > item.lastKm
+          ? `（その後 ${(mileage - item.lastKm).toLocaleString()}km走行）`
           : '';
         parts.push(`${item.lastKm.toLocaleString()}km${since}`);
       } else if (OIL_ITEMS.some(o => o.match(item.name))) {
         parts.push('距離未入力');
       }
-      return parts.length ? `前回: ${parts.join('・')}` : '';
+      return parts.length ? `前回 ${parts.join('・')}` : '前回 記録なし';
     }
 
+    // 「次回 12月2日（水）・あと29日」「次回 48,000km・あと3,000km」
+    function nextInfo(item, status) {
+      const parts = [];
+      if (item.nextDate) {
+        parts.push(`${fmtDate(item.nextDate)}・${status.daysLeft >= 0 ? `あと${status.daysLeft}日` : `${Math.abs(status.daysLeft)}日過ぎ`}`);
+      }
+      if (item.nextKm != null) {
+        const left = status.kmLeft == null ? '' : status.kmLeft >= 0 ? `・あと${status.kmLeft.toLocaleString()}km` : `・${Math.abs(status.kmLeft).toLocaleString()}km超過`;
+        parts.push(`${item.nextKm.toLocaleString()}km${left}`);
+      }
+      return `次回 ${parts.join(' / ')}`;
+    }
+
+    function itemHtml(item, status) {
+      const nextColor = status.level === 'overdue' ? 'var(--danger)' : status.level === 'soon' ? 'var(--warning)' : 'var(--text)';
+      return `
+        <div class="list-item">
+          <div class="list-item-body">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span class="list-item-title">${esc(item.name)}</span>
+              ${levelBadge(status.level)}
+            </div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px;color:${nextColor}">${nextInfo(item, status)}</div>
+            <div class="list-item-sub" style="margin-top:2px">${lastInfo(item)}</div>
+            ${item.notes ? `<div class="list-item-sub" style="color:var(--text-muted)">${esc(item.notes)}</div>` : ''}
+            ${PRESSURE_ITEM.match(item.name) ? `<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="markPressureChecked('${item.id}')">✅ 今日点検した</button>` : ''}
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+            <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
+            <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
+          </div>
+        </div>`;
+    }
+
+    // 上：期限切れ・まもなくの項目（期限が近い順）
+    // 下：それ以外を、最近やった順（前回の日付が新しい順）
     function render() {
       const items = Storage.get(KEY);
       const container = document.getElementById('listContainer');
-
-      // 緊急度（期限切れ→まもなく→余裕あり）の順に並べ、同じ緊急度の中では日数・距離が近い順に並べる
       const withStatus = items.map(item => ({ item, status: computeStatus(item) }));
-      const levelOrder = { overdue: 0, soon: 1, ok: 2 };
-      withStatus.sort((a, b) => {
+
+      const urgent = withStatus.filter(w => w.status.level !== 'ok');
+      const levelOrder = { overdue: 0, soon: 1 };
+      urgent.sort((a, b) => {
         if (levelOrder[a.status.level] !== levelOrder[b.status.level]) {
           return levelOrder[a.status.level] - levelOrder[b.status.level];
         }
@@ -688,54 +730,31 @@
         if (aDays !== null && bDays !== null) return aDays - bDays;
         if (aDays !== null) return -1;
         if (bDays !== null) return 1;
-        const aKm = a.status.kmLeft, bKm = b.status.kmLeft;
-        if (aKm !== null && bKm !== null) return aKm - bKm;
-        if (aKm !== null) return -1;
-        if (bKm !== null) return 1;
-        return 0;
+        return (a.status.kmLeft ?? 0) - (b.status.kmLeft ?? 0);
       });
 
-      let html = '<div class="card">';
-      withStatus.forEach(({ item, status }) => {
-        const dateInfo = item.nextDate
-          ? `次回予定日: ${formatDate(item.nextDate)}${status.daysLeft >= 0 ? `（あと${status.daysLeft}日）` : `（${Math.abs(status.daysLeft)}日超過）`}`
-          : '';
-        const kmInfo = item.nextKm != null
-          ? `次回予定: ${item.nextKm.toLocaleString()}km${status.kmLeft != null ? `（残り${status.kmLeft.toLocaleString()}km）` : ''}`
-          : '';
-        const last = lastInfo(item);
+      const rest = withStatus.filter(w => w.status.level === 'ok');
+      rest.sort((a, b) => (b.item.lastDate || '').localeCompare(a.item.lastDate || '')
+        || (b.item.updatedAt || b.item.createdAt || '').localeCompare(a.item.updatedAt || a.item.createdAt || ''));
 
-        html += `
-          <div class="list-item" style="background:${status.level === 'overdue' ? 'var(--danger-light)' : status.level === 'soon' ? 'var(--warning-light)' : ''}">
-            <div class="list-item-body">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                <span class="list-item-title">${esc(item.name)}</span>
-                ${levelBadge(status.level)}
-              </div>
-              ${last ? `<div class="list-item-sub">${last}</div>` : ''}
-              ${dateInfo ? `<div class="list-item-sub">${dateInfo}</div>` : ''}
-              ${kmInfo ? `<div class="list-item-sub">${kmInfo}</div>` : ''}
-              ${item.notes ? `<div class="list-item-sub">${esc(item.notes)}</div>` : ''}
-              ${PRESSURE_ITEM.match(item.name) ? `<button class="btn btn-sm btn-ghost" style="margin-top:6px" onclick="markPressureChecked('${item.id}')">✅ 今日点検した</button>` : ''}
-            </div>
-            <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-              <button class="btn-icon" onclick="openModal('${item.id}')">✏️</button>
-              <button class="btn-icon" onclick="deleteItem('${item.id}')">🗑️</button>
-            </div>
-          </div>`;
-      });
-      [...OIL_ITEMS, PRESSURE_ITEM].filter(o => !items.some(i => o.match(i.name))).forEach(o => {
-        html += `
-          <div class="list-item">
-            <div class="list-item-body">
-              <span class="list-item-title">${o.name}</span>
-              <div class="list-item-sub">未登録（前回の記録はまだありません）</div>
-            </div>
+      const unregistered = [...OIL_ITEMS, PRESSURE_ITEM].filter(o => !items.some(i => o.match(i.name)));
+
+      let html = '';
+      if (urgent.length) {
+        html += '<div class="section-title">🔔 そろそろやる</div><div class="card">'
+          + urgent.map(w => itemHtml(w.item, w.status)).join('') + '</div>';
+      }
+      if (rest.length) {
+        html += '<div class="section-title">🕘 最近やった順</div><div class="card">'
+          + rest.map(w => itemHtml(w.item, w.status)).join('') + '</div>';
+      }
+      if (unregistered.length) {
+        html += '<div class="section-title">未登録</div><div class="card">' + unregistered.map(o => `
+          <div class="list-item" style="align-items:center">
+            <div class="list-item-body"><span class="list-item-title" style="color:var(--text-sub)">${o.name}</span></div>
             <button class="btn btn-sm btn-ghost" style="flex-shrink:0" onclick="openModal(null, ${o.preset})">＋ 登録</button>
-          </div>`;
-      });
-      html += '</div>';
-
+          </div>`).join('') + '</div>';
+      }
       container.innerHTML = html;
     }
 
@@ -745,6 +764,7 @@
     buildDateSelect('fVisitDate');
     buildVisitRows();
     ensureMileageLogSeed();
+    removePackItems();
     renderMileage();
     renderVisit();
     render();
