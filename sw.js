@@ -4,7 +4,7 @@
  * ファイル構成を変えたら CACHE_VERSION を上げると古いキャッシュが破棄される。
  */
 
-const CACHE_VERSION = 'life-os-v8';
+const CACHE_VERSION = 'life-os-v9';
 const APP_SHELL = [
   './index.html',
   './manifest.json',

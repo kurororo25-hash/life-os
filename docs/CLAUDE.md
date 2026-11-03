@@ -64,7 +64,7 @@ life-os/
 | `life_lifelog`          | lifelog.html     | date, title, startTime, endTime（自由な長さ）, mood, notes |
 | `life_maintenance`      | maintenance.html | name, lastDate, lastKm（前回実施時の走行距離）, nextDate, nextKm, notes |
 | `life_maintenance_meta` | maintenance.html | mileage（現在の走行距離） |
-| `life_maintenance_visits` | maintenance.html | date, course（anshin/legal/shaken）, km, notes（安心メンテナンスパックの点検履歴） |
+| `life_maintenance_visits` | maintenance.html | date, course（anshin/legal/shaken）, km, notes（安心メンテナンスパックの点検履歴。2026-11-03に機能削除、現在は未使用） |
 | `life_habit_habits`     | habit.html       | id, name, period（朝/夜など） |
 | `life_habit`            | habit.html       | date, checks（habit id → true/false） |
 | `life_monthly_tasks`    | monthly.html     | id, label |
@@ -103,6 +103,7 @@ life-os/
 
 | 日付 | 内容 |
 |------|------|
+| 2026-11-03 | 安心メンテナンスパック機能を削除（`life_maintenance_visits` はもう使わないがデータは残置）。同じ名前の項目は1つにまとめ、＋で同名を保存したら既存を更新。前回kmが大きければ現在の走行距離に反映。sw.js v9 |
 | 2026-11-03 | 整備管理の一覧を「そろそろやる」「最近やった順」「未登録」に分割し、次回を先に表示。「安心メンテナンスパック」項目は廃止（既存は自動削除、履歴は残す）。sw.js v8 |
 | 2026-11-02 | 整備管理に安心メンテナンスパックの一括記録と履歴 `life_maintenance_visits`、タイヤ空気圧の項目を追加。sw.js v7 |
 | 2026-11-01 | 整備管理に前回実施時の走行距離 `lastKm` を追加し、「前回から○km走行」を表示。オイル・エレメントは未登録でも一覧に表示。sw.js v6 |
