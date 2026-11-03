@@ -133,9 +133,15 @@
     const PRESSURE_ITEM = { name: 'タイヤ空気圧点検', preset: 8, match: n => /空気圧/.test(n) };
     const PRESSURE_MONTHS = 1; // JATMAの呼びかけ「月に1度は点検」
 
-    // 2026-11-02版で自動追加していた「安心メンテナンスパック」の項目は不要になったので消す
+    // 安心メンテナンスパックは使わないので、その名前の項目と、2026-11-02版が自動で入れたメモを消す
     function removePackItems() {
-      Storage.get(KEY).filter(i => i.name === '安心メンテナンスパック').forEach(i => Storage.remove(KEY, i.id));
+      Storage.get(KEY).forEach(i => {
+        if (/安心メンテ|メンテナンスパック/.test(i.name)) {
+          Storage.remove(KEY, i.id);
+        } else if (/安心メンテナンスパックで実施/.test(i.notes || '')) {
+          Storage.update(KEY, i.id, { notes: i.notes.replace(/\s*安心メンテナンスパックで実施\s*/g, '').trim() });
+        }
+      });
     }
 
     // 同じ名前の項目が複数あれば、前回の日付が一番新しいものだけ残す
